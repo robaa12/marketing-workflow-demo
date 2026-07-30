@@ -9,3 +9,4 @@ coverage/
 .vitest/
 .tsbuildinfo
 *.tsbuildinfo
+.mastra/

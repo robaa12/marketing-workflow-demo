@@ -39,7 +39,8 @@ npm install
 
 # 2. Configure your LLM
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Edit .env and set OPENROUTER_API_KEY=sk-or-v1-...
+# (Free key at https://openrouter.ai/keys — no credit card required.)
 
 # 3. Run the full workflow from the CLI
 npm run dev -- "A SaaS that automates weekly marketing reporting" \
@@ -376,13 +377,32 @@ the prompts themselves easier to debug — the LLM sees the schema inline.
 
 ## Environment variables
 
-| Variable                  | Purpose                                | Default                |
-|---------------------------|----------------------------------------|------------------------|
-| `OPENAI_API_KEY`          | API key for the default model          | _required_             |
-| `ANTHROPIC_API_KEY`       | API key for Anthropic models           | _optional_             |
-| `GOOGLE_API_KEY`          | API key for Google models              | _optional_             |
-| `MASTRA_MODEL_DEFAULT`    | Model string used by all agents        | `openai/gpt-4o-mini`   |
+| Variable                  | Purpose                                | Default                                       |
+|---------------------------|----------------------------------------|-----------------------------------------------|
+| `OPENCODE_API_KEY`        | API key for OpenCode Go                | _required_ (get at https://opencode.ai/settings/api) |
+| `MASTRA_MODEL_DEFAULT`    | Model string used by all agents        | `opencode-go/kimi-k2.6` |
+| `OPENAI_API_KEY`          | API key for OpenAI models              | _optional_                                    |
+| `ANTHROPIC_API_KEY`       | API key for Anthropic models           | _optional_                                    |
+| `GOOGLE_API_KEY`          | API key for Google models              | _optional_                                    |
 | `INDUSTRY` / `BUSINESS_TYPE` / `TARGET_MARKET` / `PRICING` | Defaults for the CLI | none |
+
+### Switching providers
+
+Set `MASTRA_MODEL_DEFAULT` to any Mastra-supported `provider/model` string:
+
+```bash
+# OpenCode Go (default — uses your subscription)
+MASTRA_MODEL_DEFAULT=opencode-go/kimi-k2.6
+MASTRA_MODEL_DEFAULT=opencode-go/deepseek-v4-flash
+MASTRA_MODEL_DEFAULT=opencode-go/qwen3.7-plus
+
+# Other providers
+MASTRA_MODEL_DEFAULT=openai/gpt-4o-mini        # needs OPENAI_API_KEY
+MASTRA_MODEL_DEFAULT=anthropic/claude-sonnet-4-6  # needs ANTHROPIC_API_KEY
+MASTRA_MODEL_DEFAULT=google/gemini-2.5-pro     # needs GOOGLE_API_KEY
+```
+
+See <https://mastra.ai/models> for the full list.
 
 To use a different model per agent, edit `src/lib/model.ts` and accept an
 override inside each `buildXxxAgent` factory — they already accept a

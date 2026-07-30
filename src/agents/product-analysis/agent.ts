@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import type { z } from 'zod';
 import { getModel } from '../../lib/model.js';
+import { safeGenerate } from '../../lib/safeGenerate.js';
 import { ProductProfileSchema, type UserProductInput } from '../../schemas/index.js';
 import { PRODUCT_ANALYSIS_PROMPT } from '../../prompts/productAnalysis.js';
 
@@ -30,24 +31,15 @@ export async function runProductAnalysis(
   agent: Agent,
   input: UserProductInput,
 ): Promise<ProductAnalysisResult> {
-  const response = await agent.generate(
+  return safeGenerate(
+    agent,
     [
       {
         role: 'user',
         content: JSON.stringify(input, null, 2),
       },
     ],
-    {
-      structuredOutput: {
-        schema: ProductProfileSchema,
-        jsonPromptInjection: true,
-      },
-    },
+    ProductProfileSchema,
+    'product-analysis',
   );
-
-  const object = response.object as ProductAnalysisResult | undefined;
-  if (!object) {
-    throw new Error('Product Analysis agent returned an empty structured response.');
-  }
-  return ProductProfileSchema.parse(object);
 }

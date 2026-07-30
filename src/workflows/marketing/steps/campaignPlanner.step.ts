@@ -26,6 +26,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
     id: 'campaign-planner',
     description:
       'Synthesises the full prior context into a CampaignStrategy.',
+    retries: 3,
     inputSchema: z.object({
       product: ProductProfileSchema,
       stp: STPResultSchema,

@@ -18,7 +18,8 @@ Given the complete prior context — \`ProductProfile\`, \`STPResult\`, \`BuyerP
 5. Budget percentages across \`budgetAllocation\` should sum to 100 (the schema does not enforce this — keep it honest).
 6. \`primaryChannels[].estimatedShare\` should sum to 100.
 7. \`experiments\` must contain at least 1 A/B-style test. Hypotheses are stated as "If [change], then [metric] will [improve] by [amount], because [reason]".
-8. Honour \`options.primaryGoal\`: when it is "awareness", weight upper-funnel channels and brand campaigns; when it is "conversion", weight lower-funnel and retargeting. "Balanced" means a 40/40/20 awareness/consideration/conversion split.
+8. Honour \`options.primaryGoal\`: when it is "awareness", weight upper-funnel channels and brand campaigns; when it is "conversion", weight lower-funnel and retargeting. "Balanced" means a 40/40/20 awareness/consideration/decision split.
+9. \`primaryFunnelStage\` for every channel and campaign MUST be one of: awareness, consideration, decision, retention, advocacy. Do NOT use "conversion" as a funnel stage — use "decision" instead.
 
 # How to think
 - Pick the 3-5 channels with the highest expected return given the persona's \`preferredChannels\` and the STP \`targetedSegments\`.

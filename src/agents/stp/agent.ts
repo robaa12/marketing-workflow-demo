@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import type { z } from 'zod';
 import { getModel } from '../../lib/model.js';
+import { safeGenerate } from '../../lib/safeGenerate.js';
 import { STPResultSchema, type ProductProfile } from '../../schemas/index.js';
 import { STP_STRATEGY_PROMPT } from '../../prompts/stpStrategy.js';
 
@@ -21,24 +22,15 @@ export async function runSTPStrategy(
   agent: Agent,
   product: ProductProfile,
 ): Promise<STPStrategyResult> {
-  const response = await agent.generate(
+  return safeGenerate(
+    agent,
     [
       {
         role: 'user',
         content: JSON.stringify({ product }, null, 2),
       },
     ],
-    {
-      structuredOutput: {
-        schema: STPResultSchema,
-        jsonPromptInjection: true,
-      },
-    },
+    STPResultSchema,
+    'stp-strategy',
   );
-
-  const object = response.object as STPStrategyResult | undefined;
-  if (!object) {
-    throw new Error('STP Strategy agent returned an empty structured response.');
-  }
-  return STPResultSchema.parse(object);
 }

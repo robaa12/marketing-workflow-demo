@@ -12,6 +12,7 @@ import {
   MarketingStrategyInputSchema,
   MarketingStrategyOutputSchema,
 } from '../../schemas/index.js';
+import { MarketingWorkflowError } from '../../lib/errors.js';
 
 /**
  * Dependency bag for the workflow. Each agent is built and passed in so the
@@ -50,6 +51,32 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
       'Generates a complete marketing strategy from a raw product description.',
     inputSchema: MarketingStrategyInputSchema,
     outputSchema: MarketingStrategyOutputSchema,
+    retryConfig: {
+      attempts: 3,
+      delay: 2000,
+    },
+    options: {
+      onFinish: async (result) => {
+        const runId = result.runId ?? 'unknown';
+        const stepIds = Object.keys(result.steps ?? {});
+        const failedStep = stepIds.find(
+          (id) => result.steps?.[id]?.status === 'failed',
+        );
+        console.info(
+          `[marketing-strategy-workflow] run=${runId} status=${result.status} steps=${stepIds.length}${failedStep ? ` failedAt=${failedStep}` : ''}`,
+        );
+      },
+      onError: async (errorInfo) => {
+        const runId = errorInfo.runId ?? 'unknown';
+        const msg =
+          errorInfo.error instanceof MarketingWorkflowError
+            ? errorInfo.error.details.message
+            : (errorInfo.error?.message ?? String(errorInfo.error));
+        console.error(
+          `[marketing-strategy-workflow] FAILED run=${runId} error="${msg}"`,
+        );
+      },
+    },
   })
     .then(productAnalysisStep)
     .then(stpStep)

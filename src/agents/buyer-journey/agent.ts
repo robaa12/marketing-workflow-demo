@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { getModel } from '../../lib/model.js';
+import { safeGenerate } from '../../lib/safeGenerate.js';
 import {
   BuyerJourneySchema,
   type BuyerPersona,
@@ -32,7 +33,8 @@ export async function runBuyerJourney(
   agent: Agent,
   input: BuyerJourneyInput,
 ): Promise<BuyerJourneyResult[]> {
-  const response = await agent.generate(
+  return safeGenerate(
+    agent,
     [
       {
         role: 'user',
@@ -46,17 +48,7 @@ export async function runBuyerJourney(
         ),
       },
     ],
-    {
-      structuredOutput: {
-        schema: JourneysArraySchema,
-        jsonPromptInjection: true,
-      },
-    },
+    JourneysArraySchema,
+    'buyer-journey',
   );
-
-  const object = response.object as BuyerJourneyResult[] | undefined;
-  if (!object) {
-    throw new Error('Buyer Journey agent returned an empty structured response.');
-  }
-  return JourneysArraySchema.parse(object);
 }

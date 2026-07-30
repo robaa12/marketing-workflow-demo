@@ -72,7 +72,7 @@ describe('Marketing Director workflow (integration)', () => {
     expect(result.result.campaignStrategy.primaryChannels).toHaveLength(2);
   });
 
-  it('returns a failed status when an agent throws', async () => {
+  it('returns a failed status when an agent throws', { timeout: 15_000 }, async () => {
     const productAgent = buildProductAnalysisAgent();
     (productAgent.generate as unknown as ReturnType<typeof buildMockAgent>['generate']) =
       failingAgent().generate;

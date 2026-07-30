@@ -30,7 +30,22 @@ async function main(): Promise<void> {
   });
 
   const run = await marketingStrategyWorkflow.createRun();
-  const result = await run.start({ inputData: input });
+  const stream = run.stream({ inputData: input });
+
+  for await (const chunk of stream) {
+    if (chunk.type === 'workflow-step-start') {
+      const stepName = (chunk.payload as Record<string, unknown>)?.stepName ?? 'unknown';
+      console.error(`▸ ${stepName} — started`);
+    } else if (chunk.type === 'workflow-step-result') {
+      const stepName = (chunk.payload as Record<string, unknown>)?.stepName ?? 'unknown';
+      const status = (chunk.payload as Record<string, unknown>)?.status ?? 'unknown';
+      console.error(`▸ ${stepName} — ${status}`);
+    } else if (chunk.type === 'workflow-finish') {
+      console.error(`\n✔ Workflow finished`);
+    }
+  }
+
+  const result = await stream.result;
 
   if (result.status === 'success') {
     console.log(JSON.stringify(result.result, null, 2));

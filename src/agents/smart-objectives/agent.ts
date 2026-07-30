@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { getModel } from '../../lib/model.js';
+import { safeGenerate } from '../../lib/safeGenerate.js';
 import {
   SmartObjectiveSchema,
   type BuyerJourney,
@@ -32,7 +33,8 @@ export async function runSmartObjectives(
   agent: Agent,
   input: SmartObjectivesInput,
 ): Promise<SmartObjectiveResult[]> {
-  const response = await agent.generate(
+  return safeGenerate(
+    agent,
     [
       {
         role: 'user',
@@ -46,17 +48,7 @@ export async function runSmartObjectives(
         ),
       },
     ],
-    {
-      structuredOutput: {
-        schema: ObjectivesArraySchema,
-        jsonPromptInjection: true,
-      },
-    },
+    ObjectivesArraySchema,
+    'smart-objectives',
   );
-
-  const object = response.object as SmartObjectiveResult[] | undefined;
-  if (!object) {
-    throw new Error('SMART Objectives agent returned an empty structured response.');
-  }
-  return ObjectivesArraySchema.parse(object);
 }
