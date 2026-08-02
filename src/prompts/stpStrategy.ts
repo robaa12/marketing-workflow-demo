@@ -35,4 +35,4 @@ You have access to a webSearchTool. Use it to:
 - Positioning: derive it from the *primary* target segment's pains and the product's differentiators. Anchor the tone of voice to the buying context (B2B boardroom vs. B2C Instagram).
 
 # Output discipline
-Return JSON only. No markdown, no commentary, no trailing prose. The schema is the contract.`;
+Return JSON only. Return exactly ONE root JSON object: begin with an opening curly brace and end with a closing curly brace. Never wrap the result in an array, even if you are listing multiple segments. No markdown, commentary, or trailing prose. The schema is the contract.`;

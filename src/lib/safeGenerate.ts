@@ -17,6 +17,66 @@ import { runWithAgentErrorHandling } from './errors.js';
  */
 type SimpleMessage = { role: 'user' | 'system'; content: string };
 
+const DEFAULT_AGENT_TIMEOUT_MS = 90_000;
+
+function getAgentTimeoutMs(): number {
+  const configured = Number.parseInt(process.env['MASTRA_AGENT_TIMEOUT_MS'] ?? '', 10);
+  if (!Number.isFinite(configured)) return DEFAULT_AGENT_TIMEOUT_MS;
+  return Math.min(Math.max(configured, 15_000), 300_000);
+}
+
+async function generateWithinTimeout(
+  agent: Agent,
+  messages: SimpleMessage[],
+  options: Record<string, unknown>,
+  agentId: string,
+): Promise<{ object?: unknown; text?: string }> {
+  const controller = new AbortController();
+  const timeoutMs = getAgentTimeoutMs();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await agent.generate(messages as any, {
+      ...options,
+      abortSignal: controller.signal,
+    } as any);
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(
+        `safeGenerate: ${agentId} exceeded the ${timeoutMs}ms generation timeout. ` +
+        'Increase MASTRA_AGENT_TIMEOUT_MS only if the model reliably needs more time.',
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseCandidates<T>(text: string, schema: z.ZodSchema<T>): T | undefined {
+  for (const candidate of extractJsonCandidates(text)) {
+    try {
+      const parsed = JSON.parse(candidate);
+      try {
+        return schema.parse(parsed);
+      } catch (error) {
+        // Some models put a single valid object in an unnecessary root array.
+        if (Array.isArray(parsed) && parsed.length === 1) {
+          return schema.parse(parsed[0]);
+        }
+        throw error;
+      }
+    } catch {
+      // Keep scanning: another JSON value may match the requested schema.
+    }
+  }
+  return undefined;
+}
+
 export async function safeGenerate<T>(
   agent: Agent,
   messages: SimpleMessage[],
@@ -26,14 +86,14 @@ export async function safeGenerate<T>(
   return runWithAgentErrorHandling(agentId, async () => {
     // ── Attempt 1: native structured output ────────────────────────────────
     try {
-      const response = await agent.generate(messages as any, {
+      const response = await generateWithinTimeout(agent, messages, {
         providerOptions: getProviderOptions(),
         modelSettings: { temperature: 0.1 },
         structuredOutput: {
           schema,
           jsonPromptInjection: true,
         },
-      });
+      }, agentId);
 
       const object = response.object as T | undefined;
       if (object !== undefined && object !== null) {
@@ -65,31 +125,49 @@ export async function safeGenerate<T>(
       ...messages,
     ];
 
-    const response = await agent.generate(fallbackMessages as any, {
+    const response = await generateWithinTimeout(agent, fallbackMessages, {
       providerOptions: getProviderOptions(),
       modelSettings: { temperature: 0.1 },
-    });
+    }, agentId);
 
     const text = response.text ?? '';
-    const candidates = extractJsonCandidates(text);
+    const parsed = parseCandidates(text, schema);
+    if (parsed !== undefined) return parsed;
 
-    if (candidates.length === 0) {
+    if (extractJsonCandidates(text).length === 0) {
       throw new Error(
         `safeGenerate: Could not extract JSON from text response.\nRaw text:\n${text}`,
       );
     }
 
-    let lastError: unknown;
-    for (const candidate of candidates) {
-      try {
-        return schema.parse(JSON.parse(candidate));
-      } catch (error) {
-        lastError = error;
-      }
+    // The model returned JSON but not this schema. Give it one short, focused
+    // correction pass without tools before the workflow-level retry restarts
+    // the whole step (and repeats costly research calls).
+    const correctionResponse = await generateWithinTimeout(agent, [
+      ...fallbackMessages,
+      {
+        role: 'user',
+        content: `Your previous response did not match the required schema. Return exactly one JSON object matching the requested schema. Never return an array, markdown, explanation, or tool output. Previous response:\n${text.slice(0, 12_000)}`,
+      },
+    ], {
+      providerOptions: getProviderOptions(),
+      modelSettings: { temperature: 0 },
+      structuredOutput: {
+        schema,
+        jsonPromptInjection: true,
+      },
+      toolChoice: 'none',
+    }, agentId);
+
+    if (correctionResponse.object !== undefined && correctionResponse.object !== null) {
+      return schema.parse(correctionResponse.object);
     }
 
+    const corrected = parseCandidates(correctionResponse.text ?? '', schema);
+    if (corrected !== undefined) return corrected;
+
     throw new Error(
-      `safeGenerate: No JSON candidate matched the requested schema. ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+      'safeGenerate: The model returned JSON that did not match the requested schema, including after a correction pass.',
     );
   });
 }
