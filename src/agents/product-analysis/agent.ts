@@ -4,6 +4,7 @@ import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
 import { ProductProfileSchema, type UserProductInput } from '../../schemas/index.js';
 import { PRODUCT_ANALYSIS_PROMPT } from '../../prompts/productAnalysis.js';
+import { webSearchTool } from '../../tools/index.js';
 
 export type ProductAnalysisResult = z.infer<typeof ProductProfileSchema>;
 
@@ -19,6 +20,7 @@ export function buildProductAnalysisAgent(model: string = getModel()): Agent {
       'Normalises a raw product description into a structured ProductProfile that downstream agents consume.',
     instructions: PRODUCT_ANALYSIS_PROMPT,
     model,
+    tools: { webSearchTool },
   });
 }
 

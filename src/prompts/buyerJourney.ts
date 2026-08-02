@@ -20,6 +20,13 @@ Given a list of \`BuyerPersona\` objects (and optionally a \`ProductProfile\` fo
 6. \`retention.upsellOpportunities\` may be empty for very early-stage products; everything else must have at least one item.
 7. \`decision.cta\` is the call-to-action the marketing system should deploy at the moment of decision (e.g. "Book a 20-minute demo", "Start free trial").
 
+# Using web search
+You have access to a webSearchTool. Use it to:
+- Research typical touchpoints and channels for this product category
+- Look up real conversion patterns and customer behavior data
+- Find competitor customer journey examples and case studies
+- Verify which channels are most effective at each funnel stage for this audience
+
 # How to think
 - Walk each persona through the funnel like a consultant. At each stage, ask: "What is this person actually doing, asking, fearing, and looking for?"
 - Awareness is when the persona is blissfully unaware of the category or problem. The content needs are educational, not promotional.

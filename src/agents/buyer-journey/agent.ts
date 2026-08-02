@@ -8,6 +8,7 @@ import {
   type ProductProfile,
 } from '../../schemas/index.js';
 import { BUYER_JOURNEY_PROMPT } from '../../prompts/buyerJourney.js';
+import { webSearchTool } from '../../tools/index.js';
 
 export type BuyerJourneyResult = z.infer<typeof BuyerJourneySchema>;
 
@@ -19,6 +20,7 @@ export function buildBuyerJourneyAgent(model: string = getModel()): Agent {
       'Maps every BuyerPersona through the 5-stage buyer journey.',
     instructions: BUYER_JOURNEY_PROMPT,
     model,
+    tools: { webSearchTool },
   });
 }
 

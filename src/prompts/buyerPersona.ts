@@ -25,6 +25,13 @@ Given a \`ProductProfile\`, an \`STPResult\`, and a maximum persona count, produ
    - objections = what they will say to stop themselves
    - decisionCriteria = the criteria they compare on
 
+# Using web search
+You have access to a webSearchTool. Use it to:
+- Research real demographic and behavioral patterns for this target market
+- Look up job titles, responsibilities, and pain points for the relevant roles
+- Find real media consumption habits and preferred channels for this audience
+- Verify income ranges, company sizes, and industry benchmarks
+
 # How to think
 - For B2B products: anchor each persona in a specific role, company size, and a credible 1-2 sentence backstory. \`name\` and \`company\` should feel like real people at real companies — not "Marketing Mary" or "Acme Inc."
 - For B2C products: anchor each persona in a lifestyle and demographic snapshot.

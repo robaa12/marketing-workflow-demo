@@ -19,6 +19,13 @@ Given a \`ProductProfile\` and the \`BuyerJourney[]\`, produce a \`SmartObjectiv
 6. The full set should cover at least Awareness, Consideration, and Decision. Retention and Advocacy are optional but recommended for B2B / subscription products.
 7. \`reasoning\` must reference a specific stage in the buyer journey by name, not a generic claim.
 
+# Using web search
+You have access to a webSearchTool. Use it to:
+- Research industry KPI benchmarks (conversion rates, CAC, LTV by industry)
+- Look up realistic metrics for similar products and markets
+- Find case studies with actual performance data for comparable campaigns
+- Verify that your target values are achievable based on real-world data
+
 # How to think
 - Awareness → impressions, reach, share of voice, branded search lift
 - Consideration → MQL volume, content engagement, demo-page visits, reply rate

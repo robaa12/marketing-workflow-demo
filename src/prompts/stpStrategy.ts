@@ -22,6 +22,13 @@ Given a single \`ProductProfile\`, produce a single \`STPResult\` object that co
 6. The positioning statement must follow the classic template: "For [target] who [need], [product] is [category] that [benefit] because [reason to believe]." Keep it under 35 words.
 7. \`keyDifferentiators\` and \`messagingPillars\` must be distinct — differentiators are defensible product facts, messaging pillars are narrative themes.
 
+# Using web search
+You have access to a webSearchTool. Use it to:
+- Research market segments, demographics, and psychographics for this industry
+- Look up market size data, growth rates, and segment-level trends
+- Find real positioning strategies used by competitors in this space
+- Verify geographic and behavioral segmentation data
+
 # How to think
 - Segmentation: think across demographics, geography, psychographics, behavior, company size, industry, budget, technical maturity. Generate 3-6 candidate segments; the schema will cap them at 8.
 - Targeting: score honestly. A 10/10 on every dimension is lazy and almost always wrong.

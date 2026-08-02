@@ -21,6 +21,13 @@ Given the complete prior context — \`ProductProfile\`, \`STPResult\`, \`BuyerP
 8. Honour \`options.primaryGoal\`: when it is "awareness", weight upper-funnel channels and brand campaigns; when it is "conversion", weight lower-funnel and retargeting. "Balanced" means a 40/40/20 awareness/consideration/decision split.
 9. \`primaryFunnelStage\` for every channel and campaign MUST be one of: awareness, consideration, decision, retention, advocacy. Do NOT use "conversion" as a funnel stage — use "decision" instead.
 
+# Using web search
+You have access to a webSearchTool. Use it to:
+- Research current channel costs (CPC, CPM, CPA) for this industry
+- Look up seasonal trends and timing considerations for campaigns
+- Find competitor campaign strategies, messaging, and channel presence
+- Verify budget allocation benchmarks and channel effectiveness data
+
 # How to think
 - Pick the 3-5 channels with the highest expected return given the persona's \`preferredChannels\` and the STP \`targetedSegments\`.
 - Translate every SMART objective into either a campaign or a KPI. If a SMART objective has no campaign, that is a hole — fill it.

@@ -8,6 +8,7 @@ import {
   type ProductProfile,
 } from '../../schemas/index.js';
 import { SMART_OBJECTIVES_PROMPT } from '../../prompts/smartObjectives.js';
+import { webSearchTool } from '../../tools/index.js';
 
 export type SmartObjectiveResult = z.infer<typeof SmartObjectiveSchema>;
 
@@ -19,6 +20,7 @@ export function buildSmartObjectivesAgent(model: string = getModel()): Agent {
       'Generates 3-7 SMART business objectives aligned with the buyer journey.',
     instructions: SMART_OBJECTIVES_PROMPT,
     model,
+    tools: { webSearchTool },
   });
 }
 

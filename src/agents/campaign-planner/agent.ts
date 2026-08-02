@@ -11,6 +11,7 @@ import {
   type STPResult,
 } from '../../schemas/index.js';
 import { CAMPAIGN_PLANNER_PROMPT } from '../../prompts/campaignPlanner.js';
+import { webSearchTool } from '../../tools/index.js';
 
 export type CampaignStrategyResult = CampaignStrategy;
 export type PrimaryGoal =
@@ -28,6 +29,7 @@ export function buildCampaignPlannerAgent(model: string = getModel()): Agent {
       'Synthesises the full prior context into a CampaignStrategy with channels, campaigns, budget, and KPIs.',
     instructions: CAMPAIGN_PLANNER_PROMPT,
     model,
+    tools: { webSearchTool },
   });
 }
 

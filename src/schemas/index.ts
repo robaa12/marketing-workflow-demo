@@ -6,3 +6,4 @@ export * from './buyerJourney.js';
 export * from './objectives.js';
 export * from './campaign.js';
 export * from './marketingContext.js';
+export * from './content.js';
