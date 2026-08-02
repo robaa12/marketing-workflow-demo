@@ -71,64 +71,76 @@ export async function safeGenerate<T>(
     });
 
     const text = response.text ?? '';
-    const json = extractJson(text);
+    const candidates = extractJsonCandidates(text);
 
-    if (!json) {
+    if (candidates.length === 0) {
       throw new Error(
         `safeGenerate: Could not extract JSON from text response.\nRaw text:\n${text}`,
       );
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(json);
-    } catch (parseErr) {
-      throw new Error(
-        `safeGenerate: Extracted text is not valid JSON. ${parseErr instanceof Error ? parseErr.message : String(parseErr)}\nExtracted:\n${json}`,
-      );
+    let lastError: unknown;
+    for (const candidate of candidates) {
+      try {
+        return schema.parse(JSON.parse(candidate));
+      } catch (error) {
+        lastError = error;
+      }
     }
 
-    return schema.parse(parsed);
+    throw new Error(
+      `safeGenerate: No JSON candidate matched the requested schema. ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    );
   });
 }
 
 /**
- * Naive but effective JSON extractor for LLM text output.
- * Handles markdown fences, surrounding prose, and common formatting mistakes.
+ * Finds balanced JSON objects and arrays, including JSON embedded in prose or
+ * Markdown fences. Candidates are parsed and schema-validated by the caller,
+ * so an earlier JSON example cannot hide a later valid response.
  */
-function extractJson(text: string): string | null {
-  const trimmed = text.trim();
+function extractJsonCandidates(text: string): string[] {
+  const candidates: string[] = [];
 
-  // 1. Markdown fenced code block (```json ... ```)
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch && fenceMatch[1]) {
-    const inner = fenceMatch[1].trim();
-    if (looksLikeJson(inner)) return inner;
+  for (let start = 0; start < text.length; start += 1) {
+    const opening = text[start];
+    if (opening !== '{' && opening !== '[') continue;
+
+    const stack = [opening === '{' ? '}' : ']'];
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start + 1; index < text.length; index += 1) {
+      const character = text[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+      } else if (character === '{') {
+        stack.push('}');
+      } else if (character === '[') {
+        stack.push(']');
+      } else if (character === '}' || character === ']') {
+        if (stack.at(-1) !== character) break;
+        stack.pop();
+        if (stack.length === 0) {
+          const candidate = text.slice(start, index + 1);
+          try {
+            JSON.parse(candidate);
+            candidates.push(candidate);
+          } catch {
+            // Keep scanning: another JSON value may follow malformed output.
+          }
+          break;
+        }
+      }
+    }
   }
 
-  // 2. First top-level array [...]
-  const arrayMatch = trimmed.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    const candidate = arrayMatch[0];
-    if (looksLikeJson(candidate)) return candidate;
-  }
-
-  // 3. First top-level object {...}
-  const objectMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (objectMatch) {
-    const candidate = objectMatch[0];
-    if (looksLikeJson(candidate)) return candidate;
-  }
-
-  // 4. Whole string if it looks like JSON
-  if (looksLikeJson(trimmed)) return trimmed;
-
-  return null;
-}
-
-function looksLikeJson(s: string): boolean {
-  return (
-    (s.startsWith('[') && s.endsWith(']')) ||
-    (s.startsWith('{') && s.endsWith('}'))
-  );
+  return [...new Set(candidates)];
 }
