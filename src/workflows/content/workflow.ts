@@ -33,6 +33,7 @@ import { buildCalendar, parseDuration } from '../../tools/content-calendar.tool.
 import { runContentPreflight } from '../../lib/content-preflight.js';
 import { auditCampaignClaimsForBrand } from '../../lib/claim-audit.js';
 import { resolveBrandContext } from '../../tools/brand-context.tool.js';
+import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
 
 // ── Channel → Platform mapping ────────────────────────────────────────────
 
@@ -325,12 +326,25 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
     if (!strategyResult?.strategy) throw new Error('strategy missing');
     if (!researchResult?.research) throw new Error('research missing');
 
-    const visuals = await runVisualPrompts(visualAgent, {
+    const visualPrompts = await runVisualPrompts(visualAgent, {
       brief: briefResult.brief,
       strategy: strategyResult.strategy,
       research: researchResult.research,
       posts: inputData.posts,
     });
+    const visuals = await Promise.all(visualPrompts.map(async (visual) => {
+      const image = await generateImageAsset({
+        prompt: visual.prompt,
+        aspectRatio: resolveImageAspectRatio(visual.aspectRatio),
+      });
+      return {
+        ...visual,
+        prompt: image.enhancedPrompt,
+        tool: 'image-generation-agent',
+        aspectRatio: image.aspectRatio,
+        imageUrl: image.url,
+      };
+    }));
     return { ...inputData, visuals };
   },
   });

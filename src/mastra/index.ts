@@ -9,6 +9,7 @@ import { buildBuyerPersonaAgent } from '../agents/buyer-persona/index.js';
 import { buildBuyerJourneyAgent } from '../agents/buyer-journey/index.js';
 import { buildSmartObjectivesAgent } from '../agents/smart-objectives/index.js';
 import { buildCampaignPlannerAgent } from '../agents/campaign-planner/index.js';
+import { buildImageGenerationAgent } from '../agents/image-generation/index.js';
 import {
   buildContentResearcherAgent,
   buildContentStrategyAgent,
@@ -20,6 +21,7 @@ import {
 } from '../agents/content/index.js';
 import { buildMarketingStrategyWorkflow } from '../workflows/marketing/index.js';
 import { buildContentCreationWorkflow } from '../workflows/content/index.js';
+import { imageGenerationWorkflow } from '../workflows/image-generation/index.js';
 import { getModel } from '../lib/model.js';
 
 function resolveStorageUrl(): string {
@@ -45,6 +47,7 @@ const buyerPersonaAgent = buildBuyerPersonaAgent(model);
 const buyerJourneyAgent = buildBuyerJourneyAgent(model);
 const smartObjectivesAgent = buildSmartObjectivesAgent(model);
 const campaignPlannerAgent = buildCampaignPlannerAgent(model);
+const imageGenerationAgent = buildImageGenerationAgent(model);
 
 /**
  * Content creation agents.
@@ -107,6 +110,7 @@ export const mastra = new Mastra({
     buyerJourneyAgent,
     smartObjectivesAgent,
     campaignPlannerAgent,
+    imageGenerationAgent,
     contentResearcherAgent,
     contentStrategyAgent,
     copywriterAgent,
@@ -117,6 +121,7 @@ export const mastra = new Mastra({
   workflows: {
     marketingStrategyWorkflow,
     contentCreationWorkflow,
+    imageGenerationWorkflow,
   },
   server: {
     port: Number(process.env['PORT'] ?? 4111),
@@ -125,6 +130,10 @@ export const mastra = new Mastra({
       workflowRoute({
         path: '/workflow/stream',
         workflow: 'marketingStrategyWorkflow',
+      }),
+      workflowRoute({
+        path: '/image/workflow/stream',
+        workflow: 'imageGenerationWorkflow',
       }),
       workflowRoute({
         path: '/content/workflow/stream',

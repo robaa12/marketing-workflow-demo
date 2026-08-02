@@ -4,8 +4,8 @@
 
 This TypeScript/Mastra project turns a product brief into a marketing strategy and, optionally, a vetted social-content calendar. Source lives in `src/`:
 
-- `agents/` contains agent factories and their `run*` helpers; content agents are grouped under `agents/content/`.
-- `workflows/marketing/` creates the strategy; `workflows/content/` turns its campaign plan into posts, assets, hashtags, a calendar, and a claim audit.
+- `agents/` contains agent factories and their `run*` helpers; content agents are grouped under `agents/content/`, and `agents/image-generation/` exposes the shared visual-generation agent.
+- `workflows/marketing/` creates the strategy; `workflows/content/` turns its campaign plan into posts, generated visual specifications, hashtags, a calendar, and a claim audit; `workflows/image-generation/` also exposes visual generation as a standalone workflow.
 - `schemas/` defines shared Zod input/output contracts; update these before changing workflow data shapes.
 - `prompts/` holds agent instructions; `tools/` contains typed, read-only integrations; `lib/` contains generation, safety, scoring, and error helpers.
 - `tests/agents/`, `tests/tools/`, and `tests/lib/` contain focused tests; `tests/integration/` covers workflows. Reuse `tests/helpers/` fixtures and mocks.

@@ -117,6 +117,7 @@ describe('Content Creation workflow', () => {
       platform: 'linkedin',
       caption: initialPost.caption,
       hashtags: ['#MarketingOps'],
+      imageUrl: expect.stringMatching(/^simulated:\/\/image-generation\//),
     });
   });
 
