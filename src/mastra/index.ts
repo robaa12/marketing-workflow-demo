@@ -31,6 +31,7 @@ import { buildMarketingStrategyWorkflow } from '../workflows/marketing/index.js'
 import { buildContentCreationWorkflow } from '../workflows/content/index.js';
 import { imageGenerationWorkflow } from '../workflows/image-generation/index.js';
 import { getModel } from '../lib/model.js';
+import { researchSTPMarket } from '../lib/stp-research.js';
 
 function resolveStorageUrl(): string {
   const raw = process.env['MASTRA_STORAGE_URL'] ?? 'file:.mastra/marketing.db';
@@ -100,6 +101,7 @@ const editorQaAgent = buildEditorQaAgent(model);
 export const marketingStrategyWorkflow = buildMarketingStrategyWorkflow({
   productAnalysisAgent,
   stpStrategyAgent,
+  stpResearcher: researchSTPMarket,
   buyerPersonaAgent,
   buyerJourneyAgent,
   smartObjectivesAgent,

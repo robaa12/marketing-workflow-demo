@@ -2,6 +2,7 @@ import type { Agent } from '@mastra/core/agent';
 import type { z } from 'zod';
 import { getProviderOptions } from './model.js';
 import { runWithAgentErrorHandling } from './errors.js';
+import { withTimeout } from './timeout.js';
 
 /**
  * Wrapper around agent.generate that:
@@ -30,31 +31,17 @@ async function generateWithinTimeout(
   messages: SimpleMessage[],
   options: Record<string, unknown>,
   agentId: string,
+  deadlineAt: number,
 ): Promise<{ object?: unknown; text?: string }> {
-  const controller = new AbortController();
-  const timeoutMs = getAgentTimeoutMs();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-
-  try {
-    return await agent.generate(messages as any, {
+  const remainingMs = Math.max(deadlineAt - Date.now(), 1);
+  return withTimeout(
+    (abortSignal) => agent.generate(messages as any, {
       ...options,
-      abortSignal: controller.signal,
-    } as any);
-  } catch (error) {
-    if (timedOut) {
-      throw new Error(
-        `safeGenerate: ${agentId} exceeded the ${timeoutMs}ms generation timeout. ` +
-        'Increase MASTRA_AGENT_TIMEOUT_MS only if the model reliably needs more time.',
-      );
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+      abortSignal,
+    } as any),
+    remainingMs,
+    `safeGenerate: ${agentId}`,
+  );
 }
 
 function parseCandidates<T>(text: string, schema: z.ZodSchema<T>): T | undefined {
@@ -84,6 +71,7 @@ export async function safeGenerate<T>(
   agentId = 'unknown-agent',
 ): Promise<T> {
   return runWithAgentErrorHandling(agentId, async () => {
+    const deadlineAt = Date.now() + getAgentTimeoutMs();
     // ── Attempt 1: native structured output ────────────────────────────────
     try {
       const response = await generateWithinTimeout(agent, messages, {
@@ -93,12 +81,16 @@ export async function safeGenerate<T>(
           schema,
           jsonPromptInjection: true,
         },
-      }, agentId);
+        maxSteps: 1,
+        toolChoice: 'none',
+      }, agentId, deadlineAt);
 
       const object = response.object as T | undefined;
       if (object !== undefined && object !== null) {
         return schema.parse(object);
       }
+      const textObject = parseCandidates(response.text ?? '', schema);
+      if (textObject !== undefined) return textObject;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Only fall back for *expected* failure classes; rethrow hard network bugs.
@@ -128,26 +120,22 @@ export async function safeGenerate<T>(
     const response = await generateWithinTimeout(agent, fallbackMessages, {
       providerOptions: getProviderOptions(),
       modelSettings: { temperature: 0.1 },
-    }, agentId);
+      maxSteps: 1,
+      toolChoice: 'none',
+    }, agentId, deadlineAt);
 
     const text = response.text ?? '';
     const parsed = parseCandidates(text, schema);
     if (parsed !== undefined) return parsed;
 
-    if (extractJsonCandidates(text).length === 0) {
-      throw new Error(
-        `safeGenerate: Could not extract JSON from text response.\nRaw text:\n${text}`,
-      );
-    }
-
     // The model returned JSON but not this schema. Give it one short, focused
-    // correction pass without tools before the workflow-level retry restarts
-    // the whole step (and repeats costly research calls).
+    // correction pass without tools. Empty text is corrected too: tool-calling
+    // models can otherwise finish their step budget without a final response.
     const correctionResponse = await generateWithinTimeout(agent, [
       ...fallbackMessages,
       {
         role: 'user',
-        content: `Your previous response did not match the required schema. Return exactly one JSON object matching the requested schema. Never return an array, markdown, explanation, or tool output. Previous response:\n${text.slice(0, 12_000)}`,
+        content: `Your previous response was ${text.trim() ? 'invalid' : 'empty'} and did not match the required schema. Return exactly one JSON object matching the requested schema. Never return an array, markdown, explanation, or tool output. Previous response:\n${text.slice(0, 12_000) || '[empty response]'}`,
       },
     ], {
       providerOptions: getProviderOptions(),
@@ -157,7 +145,8 @@ export async function safeGenerate<T>(
         jsonPromptInjection: true,
       },
       toolChoice: 'none',
-    }, agentId);
+      maxSteps: 1,
+    }, agentId, deadlineAt);
 
     if (correctionResponse.object !== undefined && correctionResponse.object !== null) {
       return schema.parse(correctionResponse.object);
@@ -167,7 +156,7 @@ export async function safeGenerate<T>(
     if (corrected !== undefined) return corrected;
 
     throw new Error(
-      'safeGenerate: The model returned JSON that did not match the requested schema, including after a correction pass.',
+      `safeGenerate: The model returned ${correctionResponse.text?.trim() ? 'invalid output' : 'an empty response'}, including after a tool-free correction pass.`,
     );
   });
 }

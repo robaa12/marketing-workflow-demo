@@ -45,6 +45,7 @@ describe('Marketing Director workflow (integration)', () => {
     const workflow = buildMarketingStrategyWorkflow({
       productAnalysisAgent: productAgent,
       stpStrategyAgent: stpAgent,
+      stpResearcher: async () => ({ queries: ['test query'], citations: [], warnings: [] }),
       buyerPersonaAgent: personaAgent,
       buyerJourneyAgent: journeyAgent,
       smartObjectivesAgent: objectivesAgent,
@@ -80,6 +81,7 @@ describe('Marketing Director workflow (integration)', () => {
     const workflow = buildMarketingStrategyWorkflow({
       productAnalysisAgent: productAgent,
       stpStrategyAgent: buildSTPStrategyAgent(),
+      stpResearcher: async () => ({ queries: ['test query'], citations: [], warnings: [] }),
       buyerPersonaAgent: buildBuyerPersonaAgent(),
       buyerJourneyAgent: buildBuyerJourneyAgent(),
       smartObjectivesAgent: buildSmartObjectivesAgent(),

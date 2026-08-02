@@ -2,9 +2,12 @@ import { Agent } from '@mastra/core/agent';
 import type { z } from 'zod';
 import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
-import { STPResultSchema, type ProductProfile } from '../../schemas/index.js';
+import {
+  STPResultSchema,
+  type ProductProfile,
+  type STPResearch,
+} from '../../schemas/index.js';
 import { STP_STRATEGY_PROMPT } from '../../prompts/stpStrategy.js';
-import { webSearchTool } from '../../tools/index.js';
 
 export type STPStrategyResult = z.infer<typeof STPResultSchema>;
 
@@ -16,20 +19,20 @@ export function buildSTPStrategyAgent(model: string = getModel()): Agent {
       'Designs segmentation, targeting, and positioning for a ProductProfile.',
     instructions: STP_STRATEGY_PROMPT,
     model,
-    tools: { webSearchTool },
   });
 }
 
 export async function runSTPStrategy(
   agent: Agent,
   product: ProductProfile,
+  research?: STPResearch,
 ): Promise<STPStrategyResult> {
   return safeGenerate(
     agent,
     [
       {
         role: 'user',
-        content: JSON.stringify({ product }, null, 2),
+        content: JSON.stringify({ product, research }, null, 2),
       },
     ],
     STPResultSchema,

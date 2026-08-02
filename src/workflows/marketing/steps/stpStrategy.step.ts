@@ -5,6 +5,7 @@ import { runSTPStrategy } from '../../../agents/stp/agent.js';
 import {
   ProductProfileSchema,
   STPResultSchema,
+  STPResearchSchema,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
 
@@ -21,6 +22,7 @@ export function buildSTPStrategyStep(agent: Agent) {
     description: 'Generates segmentation, targeting, and positioning.',
     inputSchema: z.object({
       product: ProductProfileSchema,
+      stpResearch: STPResearchSchema,
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     outputSchema: z.object({
@@ -29,7 +31,7 @@ export function buildSTPStrategyStep(agent: Agent) {
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     execute: async ({ inputData }) => {
-      const stp = await runSTPStrategy(agent, inputData.product);
+      const stp = await runSTPStrategy(agent, inputData.product, inputData.stpResearch);
       return {
         product: inputData.product,
         stp,

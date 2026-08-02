@@ -7,12 +7,14 @@ import {
   buildProductAnalysisStep,
   buildSmartObjectivesStep,
   buildSTPStrategyStep,
+  buildSTPResearchStep,
 } from './steps/index.js';
 import {
   MarketingStrategyInputSchema,
   MarketingStrategyOutputSchema,
 } from '../../schemas/index.js';
 import { MarketingWorkflowError } from '../../lib/errors.js';
+import type { STPResearchRunner } from '../../lib/stp-research.js';
 
 /**
  * Dependency bag for the workflow. Each agent is built and passed in so the
@@ -21,6 +23,7 @@ import { MarketingWorkflowError } from '../../lib/errors.js';
 export interface MarketingWorkflowDeps {
   productAnalysisAgent: Agent;
   stpStrategyAgent: Agent;
+  stpResearcher: STPResearchRunner;
   buyerPersonaAgent: Agent;
   buyerJourneyAgent: Agent;
   smartObjectivesAgent: Agent;
@@ -30,7 +33,7 @@ export interface MarketingWorkflowDeps {
 /**
  * Marketing Director workflow.
  *
- *   user input ──▶ Product Analysis ──▶ STP ──▶ Persona ──▶ Journey ──▶ SMART ──▶ Campaign ──▶ final strategy
+ *   user input ──▶ Product Analysis ──▶ bounded research ──▶ STP synthesis ──▶ Persona ──▶ Journey ──▶ SMART ──▶ Campaign
  *
  * The chain is fully sequential. New agents can be inserted at any point
  * without touching the surrounding steps — see README "Extension points".
@@ -40,6 +43,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
     deps.productAnalysisAgent,
   );
   const stpStep = buildSTPStrategyStep(deps.stpStrategyAgent);
+  const stpResearchStep = buildSTPResearchStep(deps.stpResearcher);
   const personaStep = buildBuyerPersonaStep(deps.buyerPersonaAgent);
   const journeyStep = buildBuyerJourneyStep(deps.buyerJourneyAgent);
   const objectivesStep = buildSmartObjectivesStep(deps.smartObjectivesAgent);
@@ -52,8 +56,8 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
     inputSchema: MarketingStrategyInputSchema,
     outputSchema: MarketingStrategyOutputSchema,
     retryConfig: {
-      attempts: 3,
-      delay: 2000,
+      attempts: 1,
+      delay: 0,
     },
     options: {
       onFinish: async (result) => {
@@ -79,6 +83,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
     },
   })
     .then(productAnalysisStep)
+    .then(stpResearchStep)
     .then(stpStep)
     .then(personaStep)
     .then(journeyStep)

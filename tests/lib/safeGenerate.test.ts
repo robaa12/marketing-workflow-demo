@@ -48,4 +48,21 @@ describe('safeGenerate', () => {
     ).resolves.toEqual({ value: 7 });
     expect(vi.mocked(agent.generate)).toHaveBeenCalledTimes(3);
   });
+
+  it('requests schema correction after an empty text response', async () => {
+    let calls = 0;
+    const agent = {
+      generate: vi.fn(async (_messages, options) => {
+        calls += 1;
+        if (calls === 1 && options?.structuredOutput) return {};
+        if (calls === 2) return { text: '' };
+        return { object: { value: 7 } };
+      }),
+    } as unknown as Agent;
+
+    await expect(
+      safeGenerate(agent, [{ role: 'user', content: 'Return a value.' }], z.object({ value: z.number() })),
+    ).resolves.toEqual({ value: 7 });
+    expect(vi.mocked(agent.generate)).toHaveBeenCalledTimes(3);
+  });
 });
