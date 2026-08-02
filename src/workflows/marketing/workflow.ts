@@ -8,6 +8,7 @@ import {
   buildSmartObjectivesStep,
   buildSTPStrategyStep,
   buildSTPResearchStep,
+  qualityGateStep,
 } from './steps/index.js';
 import {
   MarketingStrategyInputSchema,
@@ -89,6 +90,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
     .then(journeyStep)
     .then(objectivesStep)
     .then(campaignStep)
+    .then(qualityGateStep)
     .commit();
 }
 

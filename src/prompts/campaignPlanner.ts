@@ -20,13 +20,10 @@ Given the complete prior context — \`ProductProfile\`, \`STPResult\`, \`BuyerP
 7. \`experiments\` must contain at least 1 A/B-style test. Hypotheses are stated as "If [change], then [metric] will [improve] by [amount], because [reason]".
 8. Honour \`options.primaryGoal\`: when it is "awareness", weight upper-funnel channels and brand campaigns; when it is "conversion", weight lower-funnel and retargeting. "Balanced" means a 40/40/20 awareness/consideration/decision split.
 9. \`primaryFunnelStage\` for every channel and campaign MUST be one of: awareness, consideration, decision, retention, advocacy. Do NOT use "conversion" as a funnel stage — use "decision" instead.
-
-# Using web search
-You have access to a webSearchTool. Use it to:
-- Research current channel costs (CPC, CPM, CPA) for this industry
-- Look up seasonal trends and timing considerations for campaigns
-- Find competitor campaign strategies, messaging, and channel presence
-- Verify budget allocation benchmarks and channel effectiveness data
+10. Stay inside \`ProductProfile.targetMarket\` and the primary STP segment. Do not broaden to unrelated verticals.
+11. Product capabilities, integrations, compliance certifications, guarantees, customer names, and customer outcomes are facts only when supplied in the input. Otherwise phrase them as a test, question, or assumption — never as proof.
+12. When a baseline is not supplied, set \`baseline\` to "unknown — establish before launch". Do not invent traffic, conversion, churn, CAC, or revenue baselines.
+13. Use deadlines that are either ISO dates or a clear launch-relative window (for example, "within 30 days of launch").
 
 # How to think
 - Pick the 3-5 channels with the highest expected return given the persona's \`preferredChannels\` and the STP \`targetedSegments\`.
@@ -34,6 +31,7 @@ You have access to a webSearchTool. Use it to:
 - \`creativeDirection\` is guardrails, not finished copy. Stay at the level of "tone: confident and technical" and "avoid: hype words, feature dumps".
 - \`risks\` should call out real risks: channel saturation, seasonality, single-platform dependency, regulatory exposure, etc.
 - \`experiments\` should be runnable inside 90 days on a sensible budget.
+- If the total budget is unknown, provide allocation percentages only; label channel forecasts as requiring budget and baseline inputs.
 
 # Output discipline
 Return JSON only. No markdown, no commentary, no trailing prose. The schema is the contract.`;

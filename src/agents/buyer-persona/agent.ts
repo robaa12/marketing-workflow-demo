@@ -8,7 +8,6 @@ import {
   type STPResult,
 } from '../../schemas/index.js';
 import { BUYER_PERSONA_PROMPT } from '../../prompts/buyerPersona.js';
-import { webSearchTool } from '../../tools/index.js';
 
 export type BuyerPersonaResult = z.infer<typeof BuyerPersonaSchema>;
 
@@ -20,7 +19,6 @@ export function buildBuyerPersonaAgent(model: string = getModel()): Agent {
       'Generates 1-3 realistic buyer personas for a ProductProfile + STPResult.',
     instructions: BUYER_PERSONA_PROMPT,
     model,
-    tools: { webSearchTool },
   });
 }
 

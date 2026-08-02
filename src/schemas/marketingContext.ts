@@ -5,6 +5,7 @@ import { SmartObjectiveSchema } from './objectives.js';
 import { BuyerPersonaSchema } from './persona.js';
 import { ProductProfileSchema, UserProductInputSchema } from './product.js';
 import { STPResultSchema } from './stp.js';
+import { MarketingPlanQualitySchema } from './planQuality.js';
 
 /**
  * Single source of truth for the marketing strategy workflow.
@@ -21,6 +22,7 @@ export const MarketingStrategyContextSchema = z.object({
   buyerJourney: z.array(BuyerJourneySchema).optional(),
   smartObjectives: z.array(SmartObjectiveSchema).optional(),
   campaignStrategy: CampaignStrategySchema.optional(),
+  planQuality: MarketingPlanQualitySchema.optional(),
 });
 export type MarketingStrategyContext = z.infer<typeof MarketingStrategyContextSchema>;
 
@@ -51,5 +53,6 @@ export const MarketingStrategyOutputSchema = z.object({
   buyerJourney: z.array(BuyerJourneySchema).min(1),
   smartObjectives: z.array(SmartObjectiveSchema).min(1),
   campaignStrategy: CampaignStrategySchema,
+  planQuality: MarketingPlanQualitySchema,
 });
 export type MarketingStrategyOutput = z.infer<typeof MarketingStrategyOutputSchema>;

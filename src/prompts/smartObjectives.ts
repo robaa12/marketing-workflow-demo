@@ -18,13 +18,8 @@ Given a \`ProductProfile\` and the \`BuyerJourney[]\`, produce a \`SmartObjectiv
 5. Each objective maps to exactly one funnel stage from the buyer journey. Do not duplicate a stage.
 6. The full set should cover at least Awareness, Consideration, and Decision. Retention and Advocacy are optional but recommended for B2B / subscription products.
 7. \`reasoning\` must reference a specific stage in the buyer journey by name, not a generic claim.
-
-# Using web search
-You have access to a webSearchTool. Use it to:
-- Research industry KPI benchmarks (conversion rates, CAC, LTV by industry)
-- Look up realistic metrics for similar products and markets
-- Find case studies with actual performance data for comparable campaigns
-- Verify that your target values are achievable based on real-world data
+8. Never invent a baseline. Use "unknown — establish before launch" whenever a source-of-truth baseline is absent.
+9. Use an ISO date or an explicit launch-relative deadline; do not use "next month" or "end of Q3" without a year.
 
 # How to think
 - Awareness → impressions, reach, share of voice, branded search lift

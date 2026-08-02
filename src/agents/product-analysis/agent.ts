@@ -4,7 +4,6 @@ import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
 import { ProductProfileSchema, type UserProductInput } from '../../schemas/index.js';
 import { PRODUCT_ANALYSIS_PROMPT } from '../../prompts/productAnalysis.js';
-import { webSearchTool } from '../../tools/index.js';
 
 export type ProductAnalysisResult = z.infer<typeof ProductProfileSchema>;
 
@@ -20,7 +19,6 @@ export function buildProductAnalysisAgent(model: string = getModel()): Agent {
       'Normalises a raw product description into a structured ProductProfile that downstream agents consume.',
     instructions: PRODUCT_ANALYSIS_PROMPT,
     model,
-    tools: { webSearchTool },
   });
 }
 
@@ -33,7 +31,7 @@ export async function runProductAnalysis(
   agent: Agent,
   input: UserProductInput,
 ): Promise<ProductAnalysisResult> {
-  return safeGenerate(
+  const analysis = await safeGenerate(
     agent,
     [
       {
@@ -44,4 +42,16 @@ export async function runProductAnalysis(
     ProductProfileSchema,
     'product-analysis',
   );
+  return {
+    ...analysis,
+    targetMarket: input.targetMarket ?? analysis.targetMarket,
+    verifiedFacts: [
+      input.description,
+      input.industry,
+      input.businessType,
+      input.targetMarket,
+      input.pricing,
+      input.additionalNotes,
+    ].filter((fact): fact is string => Boolean(fact && fact.trim())),
+  };
 }

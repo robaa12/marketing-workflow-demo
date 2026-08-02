@@ -71,6 +71,8 @@ describe('Marketing Director workflow (integration)', () => {
     expect(result.result.buyerJourney).toHaveLength(1);
     expect(result.result.smartObjectives).toHaveLength(1);
     expect(result.result.campaignStrategy.primaryChannels).toHaveLength(2);
+    expect(result.result.planQuality.channelForecast).toHaveLength(2);
+    expect(result.result.planQuality.status).toBe('needs-evidence');
   });
 
   it('returns a failed status when an agent throws', { timeout: 15_000 }, async () => {

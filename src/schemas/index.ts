@@ -8,3 +8,4 @@ export * from './campaign.js';
 export * from './marketingContext.js';
 export * from './content.js';
 export * from './stpResearch.js';
+export * from './planQuality.js';
