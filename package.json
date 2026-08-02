@@ -26,8 +26,10 @@
   "dependencies": {
     "@mastra/ai-sdk": "^1.7.0",
     "@mastra/core": "^1.54.0",
+    "@mastra/duckdb": "^1.5.2",
     "@mastra/evals": "^1.6.0",
     "@mastra/libsql": "^1.18.0",
+    "@mastra/observability": "^1.16.3",
     "@mastra/perplexity": "^0.2.0",
     "@tavily/core": "^0.7.6",
     "zod": "^4.4.3"

@@ -1,8 +1,16 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { Mastra } from '@mastra/core';
+import { MastraCompositeStore } from '@mastra/core/storage';
 import { LibSQLStore } from '@mastra/libsql';
 import { workflowRoute } from '@mastra/ai-sdk';
+import { DuckDBStore } from '@mastra/duckdb';
+import {
+  ConsoleExporter,
+  MastraStorageExporter,
+  Observability,
+  SensitiveDataFilter,
+} from '@mastra/observability';
 import { buildProductAnalysisAgent } from '../agents/product-analysis/index.js';
 import { buildSTPStrategyAgent } from '../agents/stp/index.js';
 import { buildBuyerPersonaAgent } from '../agents/buyer-persona/index.js';
@@ -35,6 +43,28 @@ function resolveStorageUrl(): string {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return `file:${absolute}`;
 }
+
+function resolveObservabilityPath(): string {
+  const raw = process.env['MASTRA_OBSERVABILITY_PATH'] ?? '.mastra/observability.duckdb';
+  const absolute = isAbsolute(raw) ? raw : resolve(process.cwd(), raw);
+  const dir = dirname(absolute);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return absolute;
+}
+
+const storage = new MastraCompositeStore({
+  id: 'marketing-strategy-storage',
+  default: new LibSQLStore({
+    id: 'marketing-strategy-storage',
+    url: resolveStorageUrl(),
+  }),
+  domains: {
+    observability: new DuckDBStore({
+      id: 'marketing-strategy-observability',
+      path: resolveObservabilityPath(),
+    }).observability,
+  },
+});
 
 /**
  * Build the six specialised agents with the shared default model.
@@ -99,9 +129,19 @@ export const contentCreationWorkflow = buildContentCreationWorkflow({
  * the agent by this key when running through `mastra.getAgent(...)`).
  */
 export const mastra = new Mastra({
-  storage: new LibSQLStore({
-    id: 'marketing-strategy-storage',
-    url: resolveStorageUrl(),
+  storage,
+  observability: new Observability({
+    configs: {
+      default: {
+        serviceName: 'marketing-strategy-workflow',
+        exporters: [
+          new MastraStorageExporter(),
+          new ConsoleExporter({ logLevel: 'info' }),
+        ],
+        spanOutputProcessors: [new SensitiveDataFilter()],
+        logging: { enabled: true, level: 'info' },
+      },
+    },
   }),
   agents: {
     productAnalysisAgent,
