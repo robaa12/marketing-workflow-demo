@@ -9,7 +9,7 @@
  * any Mastra-supported `provider/model` string (see https://mastra.ai/models).
  */
 
-const DEFAULT_MODEL = 'opencode-go/kimi-k2.6' as const;
+const DEFAULT_MODEL = 'opencode-go/deepseek-v4-flash' as const;
 
 export function getModel(override?: string): string {
   if (override && override.length > 0) {
