@@ -9,7 +9,17 @@ import { buildBuyerPersonaAgent } from '../agents/buyer-persona/index.js';
 import { buildBuyerJourneyAgent } from '../agents/buyer-journey/index.js';
 import { buildSmartObjectivesAgent } from '../agents/smart-objectives/index.js';
 import { buildCampaignPlannerAgent } from '../agents/campaign-planner/index.js';
+import {
+  buildContentResearcherAgent,
+  buildContentStrategyAgent,
+  buildCopywriterAgent,
+  buildCopywriterStructurerAgent,
+  buildVisualPromptAgent,
+  buildHashtagSeoAgent,
+  buildEditorQaAgent,
+} from '../agents/content/index.js';
 import { buildMarketingStrategyWorkflow } from '../workflows/marketing/index.js';
+import { buildContentCreationWorkflow } from '../workflows/content/index.js';
 import { getModel } from '../lib/model.js';
 
 function resolveStorageUrl(): string {
@@ -37,6 +47,17 @@ const smartObjectivesAgent = buildSmartObjectivesAgent(model);
 const campaignPlannerAgent = buildCampaignPlannerAgent(model);
 
 /**
+ * Content creation agents.
+ */
+const contentResearcherAgent = buildContentResearcherAgent(model);
+const contentStrategyAgent = buildContentStrategyAgent(model);
+const copywriterAgent = buildCopywriterAgent(model);
+const copywriterStructurerAgent = buildCopywriterStructurerAgent(model);
+const visualPromptAgent = buildVisualPromptAgent(model);
+const hashtagSeoAgent = buildHashtagSeoAgent(model);
+const editorQaAgent = buildEditorQaAgent(model);
+
+/**
  * Marketing Director workflow.
  *
  * The agents are injected by reference so tests can swap in fakes by passing
@@ -50,6 +71,22 @@ export const marketingStrategyWorkflow = buildMarketingStrategyWorkflow({
   buyerJourneyAgent,
   smartObjectivesAgent,
   campaignPlannerAgent,
+});
+
+/**
+ * Content Creation workflow.
+ *
+ * Chains after the marketing strategy workflow to generate actual social
+ * media content (posts, visuals, hashtags, calendar) from the strategy.
+ */
+export const contentCreationWorkflow = buildContentCreationWorkflow({
+  contentResearcherAgent,
+  contentStrategyAgent,
+  copywriterAgent,
+  copywriterStructurerAgent,
+  visualPromptAgent,
+  hashtagSeoAgent,
+  editorQaAgent,
 });
 
 /**
@@ -70,9 +107,16 @@ export const mastra = new Mastra({
     buyerJourneyAgent,
     smartObjectivesAgent,
     campaignPlannerAgent,
+    contentResearcherAgent,
+    contentStrategyAgent,
+    copywriterAgent,
+    visualPromptAgent,
+    hashtagSeoAgent,
+    editorQaAgent,
   },
   workflows: {
     marketingStrategyWorkflow,
+    contentCreationWorkflow,
   },
   server: {
     port: Number(process.env['PORT'] ?? 4111),
@@ -81,6 +125,10 @@ export const mastra = new Mastra({
       workflowRoute({
         path: '/workflow/stream',
         workflow: 'marketingStrategyWorkflow',
+      }),
+      workflowRoute({
+        path: '/content/workflow/stream',
+        workflow: 'contentCreationWorkflow',
       }),
     ],
   },

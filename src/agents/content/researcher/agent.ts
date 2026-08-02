@@ -1,0 +1,74 @@
+import { Agent } from '@mastra/core/agent';
+import type { z } from 'zod';
+import { getModel } from '../../../lib/model.js';
+import { safeGenerate } from '../../../lib/safeGenerate.js';
+import { ResearchOutputSchema, type ContentBrief } from '../../../schemas/content.js';
+import { CONTENT_RESEARCH_PROMPT } from '../../../prompts/contentResearch.js';
+import { researchEvidenceTool, perplexitySearchTool } from '../../../tools/index.js';
+
+export type ContentResearchResult = z.infer<typeof ResearchOutputSchema>;
+
+/**
+ * Build the content researcher agent.
+ * Includes both Tavily (raw search) and Perplexity (AI-summarized search)
+ * for comprehensive research coverage.
+ */
+export function buildContentResearcherAgent(model: string = getModel()): Agent {
+  return new Agent({
+    id: 'content-researcher-agent',
+    name: 'Content Researcher Agent',
+    description:
+      'Researches trends, hashtags, competitor context, and audience insights for content creation.',
+    instructions: CONTENT_RESEARCH_PROMPT,
+    model,
+    tools: {
+      researchEvidence: researchEvidenceTool,
+      perplexitySearch: perplexitySearchTool,
+    },
+  });
+}
+
+export interface ContentResearcherInput {
+  brief: ContentBrief;
+}
+
+/**
+ * Run the content researcher against a brief.
+ * Uses web search to ground findings in real-time data.
+ */
+export async function runContentResearch(
+  agent: Agent,
+  input: ContentResearcherInput,
+): Promise<ContentResearchResult> {
+  const { brief } = input;
+
+  const prompt = `Research the following content context. Run several web searches then synthesize.
+
+BRAND: ${brief.brandName}
+PRODUCT: ${brief.product}
+TARGET AUDIENCE: ${brief.targetAudience}
+PLATFORMS: ${brief.platforms.join(', ')}
+CAMPAIGN GOAL: ${brief.campaignGoal}
+
+Search for:
+1. Current trends in the ${brief.product} space for ${brief.targetAudience}
+2. Popular hashtags on ${brief.platforms.join(', ')} for this category
+3. Competitor campaigns or adjacent brands targeting similar audiences
+4. Audience behavior patterns on these platforms
+5. Viral or high-performing content in this space (to find hook patterns)
+
+Output a JSON object with exactly: trends, hashtags, sources, contentHooks, competitorNotes, audienceInsights.
+- trends: array of {title, summary, sourceUrl?}
+- hashtags: flat array of strings with #, 8-15 relevant tags
+- sources: array of {title, url, retrievedAt}; cite only URLs returned by your search tools and use an ISO-8601 timestamp for retrievedAt
+- contentHooks: array of {platform, angle, trend?, rationale} — at least 1-2 per platform. These are SPECIFIC content angles the copywriter will use directly. Example: "LinkedIn angle: use the 'quiet quitting' trend to show how this product saves 5 hours/week — resonates because the audience is burned out middle-managers"
+- competitorNotes: one prose string
+- audienceInsights: one prose string`;
+
+  return safeGenerate(
+    agent,
+    [{ role: 'user', content: prompt }],
+    ResearchOutputSchema,
+    'content-researcher',
+  );
+}
