@@ -45,6 +45,7 @@ export async function runProductAnalysis(
   return {
     ...analysis,
     targetMarket: input.targetMarket ?? analysis.targetMarket,
+    intake: input.intake,
     verifiedFacts: [
       input.description,
       input.industry,
@@ -52,6 +53,7 @@ export async function runProductAnalysis(
       input.targetMarket,
       input.pricing,
       input.additionalNotes,
+      input.intake ? JSON.stringify(input.intake) : undefined,
     ].filter((fact): fact is string => Boolean(fact && fact.trim())),
   };
 }

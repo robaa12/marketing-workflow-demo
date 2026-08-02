@@ -18,6 +18,7 @@ Take a raw product description plus minimal business metadata and produce a sing
 
 # Fact discipline
 - The input's description, industry, business type, target market, pricing, and additional notes are verified facts.
+- The intake object contains verified ICP, geography, sales motion, budget, integration, claim, and baseline information. Preserve it; do not replace unknown values with plausible guesses.
 - Do not add named integrations, compliance certifications, customer outcomes, competitor names, or market figures unless the user supplied them.
 - Keep the supplied target market in scope; if it is missing, record that limitation under assumptions.
 

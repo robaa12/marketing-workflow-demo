@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BusinessModelEnum, PricingModelEnum, ProductMaturityEnum } from './common.js';
+import { MarketingIntakeFactsSchema } from './intake.js';
 
 /**
  * Raw user input that bootstraps the Product Analysis agent.
@@ -19,6 +20,7 @@ export const UserProductInputSchema = z.object({
   targetMarket: z.string().optional(),
   pricing: z.string().optional(),
   additionalNotes: z.string().optional(),
+  intake: MarketingIntakeFactsSchema.optional(),
 });
 export type UserProductInput = z.infer<typeof UserProductInputSchema>;
 
@@ -31,6 +33,7 @@ export const ProductProfileSchema = z.object({
   name: z.string().min(1).describe('Working name for the product or service.'),
   targetMarket: z.string().default('').describe('User-supplied market scope; never broaden it without an explicit assumption.'),
   verifiedFacts: z.array(z.string().min(3)).default([]).describe('Facts supplied directly by the user. These are the only product claims that may be stated as confirmed.'),
+  intake: MarketingIntakeFactsSchema.optional().describe('Verified go-to-market facts collected before analysis.'),
   type: z
     .string()
     .min(2)

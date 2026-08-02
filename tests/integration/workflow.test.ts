@@ -17,6 +17,24 @@ import {
   sampleStrategy,
 } from '../helpers/fixtures.js';
 
+const validIntake = {
+  targetGeography: 'United States and Canada',
+  primaryIcp: 'B2B SaaS growth teams with 10 to 100 employees',
+  salesMotion: 'hybrid' as const,
+  monthlyBudget: 'USD 10,000',
+  supportedIntegrations: ['Google Ads', 'HubSpot', 'GA4'],
+  verifiedProofPoints: ['none verified'],
+  prohibitedClaims: ['guaranteed outcomes'],
+  baselineMetrics: {
+    monthlyQualifiedVisits: 'unknown',
+    monthlyLeads: 'unknown',
+    trialOrDemoConversionRate: 'unknown',
+    activationRate: 'unknown',
+    paidConversionRate: 'unknown',
+    monthlyChurnRate: 'unknown',
+  },
+};
+
 describe('Marketing Director workflow (integration)', () => {
   it('runs the full chain end-to-end with mock agents', async () => {
     // Build real agents then patch their `generate` with typed mocks that
@@ -56,6 +74,8 @@ describe('Marketing Director workflow (integration)', () => {
       description: 'A SaaS that automates marketing reporting',
       industry: 'Software',
       businessType: 'SaaS',
+      targetMarket: 'B2B SaaS growth teams',
+      intake: validIntake,
     });
 
     const run = await workflow.createRun();
@@ -72,7 +92,14 @@ describe('Marketing Director workflow (integration)', () => {
     expect(result.result.smartObjectives).toHaveLength(1);
     expect(result.result.campaignStrategy.primaryChannels).toHaveLength(2);
     expect(result.result.planQuality.channelForecast).toHaveLength(2);
-    expect(result.result.planQuality.status).toBe('needs-evidence');
+    expect(result.result.planQuality.status).toBe('needs-rework');
+
+    const suspendedRun = await workflow.createRun();
+    const suspended = await suspendedRun.start({
+      inputData: { ...input, intake: undefined },
+    });
+    expect(suspended.status).toBe('suspended');
+
   });
 
   it('returns a failed status when an agent throws', { timeout: 15_000 }, async () => {
@@ -94,6 +121,8 @@ describe('Marketing Director workflow (integration)', () => {
       description: 'A SaaS that automates marketing reporting',
       industry: 'Software',
       businessType: 'SaaS',
+      targetMarket: 'B2B SaaS growth teams',
+      intake: validIntake,
     });
 
     const run = await workflow.createRun();

@@ -9,3 +9,4 @@ export * from './marketingContext.js';
 export * from './content.js';
 export * from './stpResearch.js';
 export * from './planQuality.js';
+export * from './intake.js';

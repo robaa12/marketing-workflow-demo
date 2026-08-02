@@ -9,6 +9,7 @@ import {
   buildSTPStrategyStep,
   buildSTPResearchStep,
   qualityGateStep,
+  intakeGateStep,
 } from './steps/index.js';
 import {
   MarketingStrategyInputSchema,
@@ -34,7 +35,7 @@ export interface MarketingWorkflowDeps {
 /**
  * Marketing Director workflow.
  *
- *   user input ──▶ Product Analysis ──▶ bounded research ──▶ STP synthesis ──▶ Persona ──▶ Journey ──▶ SMART ──▶ Campaign
+ *   user input ──▶ intake gate ──▶ Product Analysis ──▶ bounded research ──▶ STP synthesis ──▶ Persona ──▶ Journey ──▶ SMART ──▶ Campaign
  *
  * The chain is fully sequential. New agents can be inserted at any point
  * without touching the surrounding steps — see README "Extension points".
@@ -83,6 +84,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
       },
     },
   })
+    .then(intakeGateStep)
     .then(productAnalysisStep)
     .then(stpResearchStep)
     .then(stpStep)
