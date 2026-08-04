@@ -1,3 +1,4 @@
+import '../load-env.js';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { Mastra } from '@mastra/core';

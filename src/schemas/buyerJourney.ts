@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { ContentTypeEnum, FunnelStageEnum, MarketingChannelEnum } from './common.js';
+import {
+  ContentTypeEnum,
+  FunnelStageEnum,
+  MarketingChannelEnum,
+  normalizeMarketingChannel,
+} from './common.js';
+
+const BuyerJourneyChannelSchema = z.preprocess(normalizeMarketingChannel, MarketingChannelEnum);
 
 const StageSchemaBase = z.object({
   problems: z.array(z.string().min(3)).min(1).max(5),
@@ -15,7 +22,7 @@ const StageSchemaBase = z.object({
     .min(1)
     .max(5),
   channels: z
-    .array(MarketingChannelEnum)
+    .array(BuyerJourneyChannelSchema)
     .min(1)
     .max(6),
   kpis: z.array(z.string().min(3)).default([]),
@@ -32,7 +39,7 @@ const DecisionSchema = z.object({
   objections: z.array(z.string().min(3)).min(1).max(5),
   purchaseTriggers: z.array(z.string().min(3)).min(1).max(5),
   cta: z.string().min(3),
-  channels: z.array(MarketingChannelEnum).min(1).max(5),
+  channels: z.array(BuyerJourneyChannelSchema).min(1).max(5),
   kpis: z.array(z.string().min(3)).default([]),
 });
 
@@ -40,7 +47,7 @@ const RetentionSchema = z.object({
   followUp: z.array(z.string().min(3)).min(1).max(5),
   upsellOpportunities: z.array(z.string().min(3)).min(0).max(5),
   customerEducation: z.array(z.string().min(3)).min(1).max(5),
-  channels: z.array(MarketingChannelEnum).min(1).max(5),
+  channels: z.array(BuyerJourneyChannelSchema).min(1).max(5),
 });
 
 const AdvocacySchema = z.object({

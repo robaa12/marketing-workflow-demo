@@ -19,6 +19,7 @@ Given a list of \`BuyerPersona\` objects (and optionally a \`ProductProfile\` fo
 5. \`consideration.competitors\` must be plausible alternatives, not invented brands. If you are unsure, name categories (e.g. "in-house spreadsheets", "manual reporting").
 6. \`retention.upsellOpportunities\` may be empty for very early-stage products; everything else must have at least one item.
 7. \`decision.cta\` is the call-to-action the marketing system should deploy at the moment of decision (e.g. "Book a 20-minute demo", "Start free trial").
+8. Every channel must be exactly one canonical lowercase value: \`linkedin\`, \`meta\`, \`google\`, \`tiktok\`, \`youtube\`, \`x\`, \`reddit\`, \`email\`, \`seo\`, \`content\`, \`community\`, \`events\`, \`pr\`, \`partnerships\`, \`referral\`, \`podcast\`, \`sms\`, \`offline\`, or \`other\`. Use \`meta\` for Instagram/Facebook and \`x\` for Twitter.
 
 # How to think
 - Walk each persona through the funnel like a consultant. At each stage, ask: "What is this person actually doing, asking, fearing, and looking for?"

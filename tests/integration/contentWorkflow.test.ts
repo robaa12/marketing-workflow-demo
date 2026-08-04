@@ -117,7 +117,7 @@ describe('Content Creation workflow', () => {
       platform: 'linkedin',
       caption: initialPost.caption,
       hashtags: ['#MarketingOps'],
-      imageUrl: expect.stringMatching(/^simulated:\/\/image-generation\//),
+      imageUrl: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
     });
   });
 
@@ -215,7 +215,7 @@ describe('Content Creation workflow', () => {
     expect(copywriterPrompt?.content).toContain('Generate 8 on-brand posts for linkedin');
   });
 
-  it('fails instead of publishing a calendar with unmatched generated artifacts', async () => {
+  it('fills in a visual direction when the visual agent omits a post', async () => {
     const workflow = buildContentCreationWorkflow(buildDeps({
       visualPromptAgent: mockAgent({
         object: [{ postId: 'linkedin-missing', prompt: 'Unmatched prompt', tool: 'dall-e', aspectRatio: '1:1' }],
@@ -224,6 +224,12 @@ describe('Content Creation workflow', () => {
 
     const result = await (await workflow.createRun()).start({ inputData: input });
 
-    expect(result.status).toBe('failed');
+    expect(result.status).toBe('success');
+    if (result.status !== 'success') return;
+    expect(result.result.calendar[0]).toMatchObject({
+      platform: 'linkedin',
+      visualPrompt: expect.stringContaining('Create a polished text campaign visual'),
+      imageUrl: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
+    });
   });
 });

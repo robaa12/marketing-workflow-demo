@@ -75,6 +75,30 @@ export const MarketingChannelEnum = z.enum([
 ]);
 export type MarketingChannel = z.infer<typeof MarketingChannelEnum>;
 
+export function normalizeMarketingChannel(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase().replace(/[_\s-]+/g, '-');
+  const aliases: Record<string, MarketingChannel> = {
+    instagram: 'meta',
+    facebook: 'meta',
+    'facebook-ads': 'meta',
+    twitter: 'x',
+    'x-twitter': 'x',
+    'youtube-shorts': 'youtube',
+    'youtube-shorts-video': 'youtube',
+    'email-marketing': 'email',
+    blog: 'content',
+    blogging: 'content',
+    'blog-post': 'content',
+    'paid-search': 'google',
+    'google-ads': 'google',
+    'word-of-mouth': 'referral',
+  };
+  if (aliases[normalized]) return aliases[normalized];
+  if (MarketingChannelEnum.options.includes(normalized as MarketingChannel)) return normalized;
+  return 'other';
+}
+
 export const CampaignTypeEnum = z.enum([
   'awareness',
   'lead-generation',

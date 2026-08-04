@@ -19,6 +19,7 @@ import {
   type HashtagItem,
 } from '../../schemas/content.js';
 import { CampaignStrategySchema, type CampaignStrategy } from '../../schemas/campaign.js';
+import { MarketingStrategyOutputSchema } from '../../schemas/marketingContext.js';
 import type { MarketingChannel } from '../../schemas/common.js';
 import {
   runContentResearch,
@@ -107,23 +108,27 @@ function derivePostsPerWeekFromStrategy(strategy: CampaignStrategy): number {
 
 // ── Input schema: CampaignStrategy from the marketing workflow ────────────
 
-const ContentCreationInputSchema = z.object({
+export const ContentCreationInputSchema = z.object({
   brandName: z.string().min(1),
   product: z.string().min(1),
   targetAudience: z.string().min(1),
   campaignStrategy: CampaignStrategySchema,
+  marketingStrategy: MarketingStrategyOutputSchema.optional()
+    .describe('The reviewed marketing strategy, including the outputs from every strategy agent.'),
   platforms: z.array(SocialPlatformEnum).min(1).optional()
     .describe('Social platforms to create content for. If omitted, derived from strategy channels.'),
   duration: z.string().min(1).optional()
     .describe('Campaign duration (e.g. "2 weeks"). If omitted, derived from strategy.'),
   postsPerWeek: z.number().int().positive().optional()
     .describe('Posts per week. If omitted, derived from strategy content mix.'),
+  generateImages: z.boolean().optional()
+    .describe('Generate rendered image assets in addition to visual prompts.'),
   maxPosts: z.number().int().positive().max(60).optional()
     .describe('Safety limit for the total generated posts in one run.'),
   requireApproval: z.boolean().optional()
     .describe('Suspend after QA until a reviewer explicitly approves the content.'),
 });
-type ContentCreationInput = z.infer<typeof ContentCreationInputSchema>;
+export type ContentCreationInput = z.infer<typeof ContentCreationInputSchema>;
 
 const ContentWorkflowStateSchema = z.object({
   runId: z.string().optional(),
@@ -169,10 +174,21 @@ const buildBriefStep = createStep({
   execute: async ({ inputData, runId, state, setState }) => {
     const strategy = inputData.campaignStrategy;
     const campaign = strategy.campaignRecommendations[0];
-    const keyMessages = strategy.creativeDirection.keyMessages;
+    const reviewedProduct = inputData.marketingStrategy?.product;
+    const keyMessages = [
+      ...strategy.creativeDirection.keyMessages,
+      ...(reviewedProduct?.uniqueSellingPoints ?? []),
+    ].slice(0, 5);
     const constraints = [
       ...strategy.creativeDirection.dontList.map((d) => `AVOID: ${d}`),
     ].join('; ');
+    const productContext = reviewedProduct
+      ? [
+          inputData.product,
+          `Value proposition: ${reviewedProduct.valueProposition}`,
+          `Customer problems: ${reviewedProduct.customerProblems.join('; ')}`,
+        ].join('\n')
+      : inputData.product;
 
     // Derive platforms, duration, postsPerWeek from strategy if not provided
     const platforms = inputData.platforms ?? derivePlatformsFromStrategy(strategy);
@@ -182,9 +198,9 @@ const buildBriefStep = createStep({
     const brief: ContentBrief = {
       brandName: inputData.brandName,
       brandVoice: strategy.creativeDirection.storytellingApproach,
-      product: inputData.product,
+      product: productContext,
       campaignGoal: campaign?.objective ?? 'Increase brand awareness',
-      targetAudience: inputData.targetAudience,
+      targetAudience: inputData.marketingStrategy?.campaignStrategy.audienceStrategy.primaryAudience ?? inputData.targetAudience,
       platforms: platforms as [SocialPlatform, ...SocialPlatform[]],
       duration,
       postsPerWeek,
@@ -318,7 +334,7 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
   description: 'Visual Prompt Agent — image/video prompts per generated post.',
   inputSchema: ContentBundleSchema,
   outputSchema: ContentBundleSchema,
-  execute: async ({ inputData, getStepResult }) => {
+  execute: async ({ inputData, getInitData, getStepResult }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
     const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
@@ -326,12 +342,25 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
     if (!strategyResult?.strategy) throw new Error('strategy missing');
     if (!researchResult?.research) throw new Error('research missing');
 
-    const visualPrompts = await runVisualPrompts(visualAgent, {
+    const generatedVisualPrompts = await runVisualPrompts(visualAgent, {
       brief: briefResult.brief,
       strategy: strategyResult.strategy,
       research: researchResult.research,
       posts: inputData.posts,
     });
+    const visualPrompts = ensureVisualPromptPerPost(
+      inputData.posts,
+      generatedVisualPrompts,
+      briefResult.brief,
+      strategyResult.strategy,
+    );
+    const initialInput = getInitData<ContentCreationInput>();
+    if (initialInput.generateImages === false) {
+      return {
+        ...inputData,
+        visuals: visualPrompts.map(({ imageUrl: _imageUrl, ...visual }) => visual),
+      };
+    }
     const visuals = await Promise.all(visualPrompts.map(async (visual) => {
       const image = await generateImageAsset({
         prompt: visual.prompt,
@@ -347,6 +376,43 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
     }));
     return { ...inputData, visuals };
   },
+  });
+}
+
+/**
+ * Structured model output can be valid while still omitting a post. Keep the
+ * calendar contract total by preserving matching agent output and creating a
+ * deterministic, on-brand direction for every omitted post.
+ */
+function ensureVisualPromptPerPost(
+  posts: Post[],
+  generatedVisuals: VisualPromptItem[],
+  brief: ContentBrief,
+  strategy: ContentStrategy,
+): VisualPromptItem[] {
+  const postIds = new Set(posts.map((post) => post.postId));
+  const generatedByPostId = new Map<string, VisualPromptItem>();
+
+  for (const visual of generatedVisuals) {
+    if (postIds.has(visual.postId) && !generatedByPostId.has(visual.postId)) {
+      generatedByPostId.set(visual.postId, visual);
+    }
+  }
+
+  return posts.map((post) => generatedByPostId.get(post.postId) ?? {
+    postId: post.postId,
+    prompt: [
+      `Create a polished ${post.format} campaign visual for ${brief.brandName} on ${post.platform}.`,
+      `Communicate this post idea: ${post.caption.slice(0, 500)}`,
+      `Keep it consistent with the campaign narrative: ${strategy.coreNarrative.slice(0, 240)}`,
+      `Use the brand voice (${brief.brandVoice}) and leave clear negative space for platform-safe copy.`,
+    ].join(' '),
+    tool: 'visual-prompt-agent-fallback',
+    aspectRatio: post.platform === 'instagram'
+      ? '1:1'
+      : post.platform === 'tiktok' || post.platform === 'youtube_shorts'
+        ? '9:16'
+        : '16:9',
   });
 }
 

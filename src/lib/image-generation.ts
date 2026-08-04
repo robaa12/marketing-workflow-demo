@@ -41,6 +41,43 @@ export const ImageGenerationResultSchema = z.object({
 });
 export type ImageGenerationResult = z.infer<typeof ImageGenerationResultSchema>;
 
+function escapeSvgText(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function createDemoImageDataUrl(
+  prompt: string,
+  seed: number,
+  details: { palette: string[]; lighting: string; mood: string },
+): string {
+  const title = escapeSvgText(prompt.replace(/\s+/g, ' ').trim().slice(0, 72));
+  const accentHue = seed % 360;
+  const secondaryHue = (accentHue + 74) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop stop-color="hsl(${accentHue} 48% 22%)"/>
+        <stop offset="1" stop-color="hsl(${secondaryHue} 58% 42%)"/>
+      </linearGradient>
+      <filter id="blur"><feGaussianBlur stdDeviation="55"/></filter>
+    </defs>
+    <rect width="1200" height="675" fill="url(#bg)"/>
+    <circle cx="1010" cy="80" r="280" fill="hsl(${secondaryHue} 80% 72% / .32)" filter="url(#blur)"/>
+    <circle cx="140" cy="650" r="310" fill="hsl(${accentHue} 90% 78% / .22)" filter="url(#blur)"/>
+    <path d="M760 85c150 70 270 190 340 360-180-20-330 30-460 150-20-210 20-380 120-510Z" fill="white" opacity=".09"/>
+    <rect x="72" y="72" width="1056" height="531" rx="42" fill="none" stroke="white" stroke-opacity=".28"/>
+    <text x="96" y="470" fill="white" font-family="Georgia,serif" font-size="52" font-weight="600">${title || 'Campaign visual'}</text>
+    <text x="98" y="524" fill="white" fill-opacity=".72" font-family="Arial,sans-serif" font-size="22">${escapeSvgText(details.mood)} · ${escapeSvgText(details.lighting)}</text>
+    <text x="98" y="566" fill="white" fill-opacity=".52" font-family="Arial,sans-serif" font-size="16" letter-spacing="4">AETHERFLOW VISUAL STUDY</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 const STYLE_PREFIXES: Record<ImageStyle, string> = {
   photorealistic: 'Photorealistic photograph of', cinematic: 'Cinematic scene of',
   anime: 'Anime-style illustration of', 'digital-art': 'Digital artwork of',
@@ -87,7 +124,7 @@ export async function generateImageAsset(input: ImageGenerationInput): Promise<I
   const enhancedPrompt = `${STYLE_PREFIXES[data.style]} ${data.prompt}, ${details.lighting.toLowerCase()}, ${details.mood.toLowerCase()}, professional composition, ${data.aspectRatio} aspect ratio`;
 
   return {
-    url: `simulated://image-generation/${seed}`,
+    url: createDemoImageDataUrl(data.prompt, seed, details),
     seed,
     prompt: data.prompt,
     enhancedPrompt,

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   BuyerPersonaSchema,
   CampaignStrategySchema,
+  CustomerSegmentSchema,
   ContentTypeEnum,
   FunnelStageEnum,
   MarketingChannelEnum,
+  normalizeMarketingChannel,
   ProductProfileSchema,
   STPResultSchema,
   SmartObjectiveSchema,
@@ -24,6 +26,11 @@ describe('common enums', () => {
 
   it('exposes a non-empty marketing channel enum', () => {
     expect(MarketingChannelEnum.options.length).toBeGreaterThan(5);
+  });
+
+  it('normalizes common social channel aliases', () => {
+    expect(normalizeMarketingChannel('Instagram')).toBe('meta');
+    expect(normalizeMarketingChannel('Twitter')).toBe('x');
   });
 
   it('exposes a non-empty content type enum', () => {
@@ -88,6 +95,14 @@ describe('ProductProfileSchema', () => {
 });
 
 describe('STPResultSchema', () => {
+  it('normalizes qualitative technical maturity labels from model output', () => {
+    expect(CustomerSegmentSchema.parse({
+      id: 'creative-professionals',
+      label: 'Creative professionals',
+      technicalMaturity: 'advanced',
+    }).technicalMaturity).toBe('high');
+  });
+
   it('parses a minimal STP result with at least 2 segments', () => {
     const result = STPResultSchema.parse({
       segments: [

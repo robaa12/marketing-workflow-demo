@@ -17,7 +17,7 @@ describe('Image Generation workflow', () => {
     expect(result.status).toBe('success');
     if (result.status !== 'success') return;
     expect(result.result).toMatchObject({
-      url: 'simulated://image-generation/42',
+      url: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
       style: 'digital-art',
       aspectRatio: '1:1',
     });

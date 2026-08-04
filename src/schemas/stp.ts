@@ -1,6 +1,21 @@
 import { z } from 'zod';
 import { SegmentPriorityEnum } from './common.js';
 
+const TechnicalMaturitySchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') return value;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'unknown') {
+      return normalized;
+    }
+    if (normalized.includes('beginner') || normalized.includes('basic')) return 'low';
+    if (normalized.includes('intermediate') || normalized.includes('moderate')) return 'medium';
+    if (normalized.includes('advanced') || normalized.includes('expert')) return 'high';
+    return 'unknown';
+  },
+  z.enum(['low', 'medium', 'high', 'unknown']).default('unknown'),
+);
+
 /**
  * One candidate customer segment discovered during segmentation.
  * Kept deliberately distinct from BuyerPersona: a segment is a market slice,
@@ -43,9 +58,7 @@ export const CustomerSegmentSchema = z.object({
     .string()
     .optional()
     .describe('Typical budget range for the product category.'),
-  technicalMaturity: z
-    .enum(['low', 'medium', 'high', 'unknown'])
-    .default('unknown'),
+  technicalMaturity: TechnicalMaturitySchema,
   estimatedSize: z
     .string()
     .optional()

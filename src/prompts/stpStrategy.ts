@@ -22,6 +22,8 @@ Given a single \`ProductProfile\`, produce a single \`STPResult\` object that co
 6. The positioning statement must follow the classic template: "For [target] who [need], [product] is [category] that [benefit] because [reason to believe]." Keep it under 35 words.
 7. \`keyDifferentiators\` and \`messagingPillars\` must be distinct — differentiators are defensible product facts, messaging pillars are narrative themes.
 
+8. \`technicalMaturity\` must be exactly one lowercase value: \`low\`, \`medium\`, \`high\`, or \`unknown\`. Never use labels such as \`beginner\`, \`intermediate\`, \`advanced\`, \`medium-high\`, or \`not applicable\`.
+
 # Research evidence
 The input may include bounded web research with citations and warnings.
 - Use cited evidence to ground segment and competitor observations.

@@ -48,6 +48,24 @@ npm run dev -- "A SaaS that automates weekly marketing reporting" \
   --businessType="SaaS"
 ```
 
+### Run the API for the AetherFlow frontend
+
+```bash
+npm run server
+```
+
+The server listens on `http://localhost:4112` by default (`API_PORT` overrides
+it) and exposes two
+approval-aware workflow endpoints:
+
+- `POST /api/strategy` and `GET /api/strategy/:runId` build and poll a complete marketing strategy.
+- `POST /api/content` and `GET /api/content/:runId` build and poll posts from the approved `campaignStrategy` object.
+- `POST /api/strategy/:runId/cancel` and `POST /api/content/:runId/cancel` cancel an active run.
+
+The React frontend uses the first workflow as a review gate. It sends the
+strategy to the content endpoint only after the user selects **Approve & create
+posts**.
+
 The CLI serialises the final strategy as JSON to stdout.
 
 ### Using the workflow programmatically
