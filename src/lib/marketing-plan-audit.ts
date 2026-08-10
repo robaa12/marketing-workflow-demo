@@ -88,6 +88,11 @@ export function auditMarketingPlan(input: {
     })),
     issues: uniqueIssues(issues),
     nextDecisions: buildNextDecisions(issues),
+    strategyRevision: {
+      attempted: false,
+      addressedIssueCodes: [],
+      remainingActionableIssueCodes: [],
+    },
   };
 }
 

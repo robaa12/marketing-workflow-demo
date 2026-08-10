@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { KnowledgeCitationSchema } from './marketingContext.js';
 import { MarketingChannelEnum } from './common.js';
 
 // ── Platform enum (social-specific, maps to MarketingChannelEnum) ──────────
@@ -182,6 +183,7 @@ export const CampaignContentDraftOutputSchema = z.object({
   calendar: z.array(CalendarEntrySchema),
   notes: z.array(QANoteSchema),
   sources: z.array(ResearchSourceSchema),
+  knowledgeSources: z.array(KnowledgeCitationSchema).default([]),
 });
 export type CampaignContentDraftOutput = z.infer<typeof CampaignContentDraftOutputSchema>;
 
@@ -191,6 +193,7 @@ export const ClaimAuditSummarySchema = z.object({
     text: z.string(),
     status: z.enum(['approved', 'evidence-linked', 'unsupported']),
     supportingUrls: z.array(z.string().url()),
+    supportingKnowledge: z.array(KnowledgeCitationSchema).default([]),
   })),
   unsupportedCount: z.number().int().nonnegative(),
 });

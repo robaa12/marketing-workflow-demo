@@ -10,6 +10,12 @@ export const MarketingPlanIssueSchema = z.object({
 });
 export type MarketingPlanIssue = z.infer<typeof MarketingPlanIssueSchema>;
 
+export const StrategyRevisionSchema = z.object({
+  attempted: z.boolean(),
+  addressedIssueCodes: z.array(z.string()).max(8),
+  remainingActionableIssueCodes: z.array(z.string()).max(8),
+});
+
 export const MarketingPlanQualitySchema = z.object({
   score: z.number().int().min(0).max(100),
   status: z.enum(['ready-for-review', 'needs-evidence', 'needs-rework']),
@@ -28,5 +34,6 @@ export const MarketingPlanQualitySchema = z.object({
   })),
   issues: z.array(MarketingPlanIssueSchema),
   nextDecisions: z.array(z.string()).min(1).max(8),
+  strategyRevision: StrategyRevisionSchema,
 });
 export type MarketingPlanQuality = z.infer<typeof MarketingPlanQualitySchema>;

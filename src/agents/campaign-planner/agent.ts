@@ -6,6 +6,9 @@ import {
   type BuyerJourney,
   type BuyerPersona,
   type CampaignStrategy,
+  type MarketingPlanIssue,
+  type KnowledgeCitation,
+  type ProjectBrandProfile,
   type ProductProfile,
   type SmartObjective,
   type STPResult,
@@ -37,7 +40,12 @@ export interface CampaignPlannerInput {
   personas: BuyerPersona[];
   buyerJourney: BuyerJourney[];
   smartObjectives: SmartObjective[];
-  options: PrimaryGoal;
+  options?: PrimaryGoal;
+  /** Present only for the bounded QA remediation pass. */
+  currentStrategy?: CampaignStrategy;
+  qaFeedback?: MarketingPlanIssue[];
+  knowledgeSources?: KnowledgeCitation[];
+  brandProfile?: ProjectBrandProfile;
 }
 
 /**
@@ -54,7 +62,11 @@ export async function runCampaignPlanner(
     personas: input.personas,
     buyerJourney: input.buyerJourney,
     smartObjectives: input.smartObjectives,
-    options: { primaryGoal: input.options },
+    ...(input.options ? { options: { primaryGoal: input.options } } : {}),
+    ...(input.currentStrategy ? { currentStrategy: input.currentStrategy } : {}),
+    ...(input.qaFeedback ? { qaFeedback: input.qaFeedback } : {}),
+    ...(input.knowledgeSources?.length ? { knowledgeSources: input.knowledgeSources } : {}),
+    ...(input.brandProfile ? { brandProfile: input.brandProfile } : {}),
   };
 
   return safeGenerate(

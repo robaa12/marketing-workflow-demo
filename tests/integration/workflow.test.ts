@@ -57,8 +57,9 @@ describe('Marketing Director workflow (integration)', () => {
       buildMockAgent([sampleJourney]).generate;
     (objectivesAgent.generate as unknown as ReturnType<typeof buildMockAgent>['generate']) =
       buildMockAgent(sampleObjectives).generate;
+    const campaignMock = buildMockAgent(sampleStrategy);
     (campaignAgent.generate as unknown as ReturnType<typeof buildMockAgent>['generate']) =
-      buildMockAgent(sampleStrategy).generate;
+      campaignMock.generate;
 
     const workflow = buildMarketingStrategyWorkflow({
       productAnalysisAgent: productAgent,
@@ -93,6 +94,11 @@ describe('Marketing Director workflow (integration)', () => {
     expect(result.result.campaignStrategy.primaryChannels).toHaveLength(2);
     expect(result.result.planQuality.channelForecast).toHaveLength(2);
     expect(result.result.planQuality.status).toBe('needs-rework');
+    expect(result.result.planQuality.strategyRevision.attempted).toBe(true);
+    expect(result.result.planQuality.strategyRevision.addressedIssueCodes).toEqual(
+      expect.arrayContaining(['unmapped-objective']),
+    );
+    expect(campaignMock.generate).toHaveBeenCalledTimes(2);
 
     const suspendedRun = await workflow.createRun();
     const suspended = await suspendedRun.start({

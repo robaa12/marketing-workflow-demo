@@ -6,11 +6,14 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:mastra": "mastra build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx src/index.ts",
     "server": "tsx src/server.ts",
     "studio": "mastra dev",
+    "start:mastra": "mastra start",
     "test": "vitest run",
+    "test:rag": "vitest run tests/evals/projectKnowledge.eval.test.ts tests/lib/projectKnowledge.test.ts tests/lib/claimAudit.test.ts",
     "test:watch": "vitest"
   },
   "keywords": [
@@ -32,6 +35,7 @@
     "@mastra/libsql": "^1.18.0",
     "@mastra/observability": "^1.16.3",
     "@mastra/perplexity": "^0.2.0",
+    "@mastra/pg": "^1.18.0",
     "@tavily/core": "^0.7.6",
     "zod": "^4.4.3"
   },

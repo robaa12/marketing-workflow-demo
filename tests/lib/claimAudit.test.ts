@@ -19,6 +19,7 @@ function draft(caption: string): CampaignContentDraftOutput {
       url: 'https://example.com/case-study',
       retrievedAt: '2026-08-02T00:00:00.000Z',
     }],
+    knowledgeSources: [],
   };
 }
 
@@ -38,5 +39,24 @@ describe('campaign claim audit', () => {
 
     expect(audit).toMatchObject({ unsupportedCount: 0 });
     expect(audit.verifications[0]?.status).toBe('approved');
+  });
+
+  it('links a claim to retrieved project knowledge, including a source without a public URL', () => {
+    const input = draft('Save 5 hours every week.');
+    input.knowledgeSources = [{
+      sourceId: 'brand-handbook',
+      sourceType: 'DOCUMENT',
+      title: 'Brand handbook',
+      excerpt: 'Customers save 5 hours every week when reporting is automated.',
+      score: 0.91,
+    }];
+
+    const audit = auditCampaignClaimsForBrand(input, []);
+
+    expect(audit).toMatchObject({ unsupportedCount: 0 });
+    expect(audit.verifications[0]).toMatchObject({
+      status: 'evidence-linked',
+      supportingKnowledge: [expect.objectContaining({ sourceId: 'brand-handbook' })],
+    });
   });
 });

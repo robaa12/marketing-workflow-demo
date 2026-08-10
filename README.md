@@ -68,6 +68,38 @@ posts**.
 
 The CLI serialises the final strategy as JSON to stdout.
 
+### Project knowledge RAG
+
+RAG is deliberately off by default. It is project-scoped: the Nest backend
+owns source lifecycle and sends Mastra only the IDs of sources currently marked
+`READY`. Mastra will not retrieve with a project ID alone.
+
+For local use, configure the same high-entropy `MASTRA_INTERNAL_TOKEN` in both
+services, set `RAG_ENABLED=true` in both environments, start Ollama, and pull
+the configured embedding model before starting the workflow server:
+
+```bash
+docker compose -f ../iti-grad/docker-compose.yml --profile local-rag up -d ollama
+ollama pull nomic-embed-text-v2-moe
+npm run server
+```
+
+Keep `RAG_INDEX_VERSION` stable for a given embedding model, dimension, and
+vector-index configuration. When any of them changes, increment it and
+re-index all project sources; this prevents mixing incompatible vectors. The
+RAG vector store is PostgreSQL with pgvector, in the `rag` schema by default;
+LibSQL remains only for Mastra workflow/tracing storage.
+
+Run the deterministic RAG quality suite with:
+
+```bash
+npm run test:rag
+```
+
+It reports and gates Recall@K, mean reciprocal rank, precision@K, and no-answer
+accuracy against checked-in retrieval cases. Add a case whenever a production
+retrieval failure is fixed.
+
 ### Using the workflow programmatically
 
 ```ts

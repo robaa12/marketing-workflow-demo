@@ -35,6 +35,8 @@ import { runContentPreflight } from '../../lib/content-preflight.js';
 import { auditCampaignClaimsForBrand } from '../../lib/claim-audit.js';
 import { resolveBrandContext } from '../../tools/brand-context.tool.js';
 import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
+import { retrieveProjectKnowledge } from '../../lib/project-knowledge.js';
+import { KnowledgeScopeSchema, ProjectBrandProfileSchema } from '../../schemas/marketingContext.js';
 
 // ── Channel → Platform mapping ────────────────────────────────────────────
 
@@ -109,6 +111,8 @@ function derivePostsPerWeekFromStrategy(strategy: CampaignStrategy): number {
 // ── Input schema: CampaignStrategy from the marketing workflow ────────────
 
 export const ContentCreationInputSchema = z.object({
+  knowledgeScope: KnowledgeScopeSchema.optional(),
+  brandProfile: ProjectBrandProfileSchema.optional(),
   brandName: z.string().min(1),
   product: z.string().min(1),
   targetAudience: z.string().min(1),
@@ -181,14 +185,26 @@ const buildBriefStep = createStep({
     ].slice(0, 5);
     const constraints = [
       ...strategy.creativeDirection.dontList.map((d) => `AVOID: ${d}`),
+      ...(inputData.brandProfile?.prohibitedTerms ?? []).map((term) => `NEVER USE: ${term}`),
+      ...(inputData.brandProfile?.writingRules ?? []).map((rule) => `RULE: ${rule}`),
+      ...(inputData.brandProfile?.preferredTerms.length ? [`PREFER: ${inputData.brandProfile.preferredTerms.join(', ')}`] : []),
+      ...(inputData.brandProfile?.ctaGuidance ? [`CTA: ${inputData.brandProfile.ctaGuidance}`] : []),
+      ...(inputData.brandProfile?.languageGuidance ? [`LANGUAGE: ${inputData.brandProfile.languageGuidance}`] : []),
     ].join('; ');
+    const knowledgeSources = await retrieveProjectKnowledge(
+      inputData.knowledgeScope,
+      `${inputData.brandName} ${inputData.product} ${inputData.targetAudience}`,
+    );
+    const knowledgeContext = knowledgeSources.length
+      ? `\nApproved project knowledge (cite only these facts):\n${knowledgeSources.map((source) => `- ${source.title}: ${source.excerpt}`).join('\n')}`
+      : '';
     const productContext = reviewedProduct
       ? [
           inputData.product,
           `Value proposition: ${reviewedProduct.valueProposition}`,
           `Customer problems: ${reviewedProduct.customerProblems.join('; ')}`,
-        ].join('\n')
-      : inputData.product;
+        ].join('\n') + knowledgeContext
+      : inputData.product + knowledgeContext;
 
     // Derive platforms, duration, postsPerWeek from strategy if not provided
     const platforms = inputData.platforms ?? derivePlatformsFromStrategy(strategy);
@@ -197,7 +213,7 @@ const buildBriefStep = createStep({
 
     const brief: ContentBrief = {
       brandName: inputData.brandName,
-      brandVoice: strategy.creativeDirection.storytellingApproach,
+      brandVoice: inputData.brandProfile?.voice ?? strategy.creativeDirection.storytellingApproach,
       product: productContext,
       campaignGoal: campaign?.objective ?? 'Increase brand awareness',
       targetAudience: inputData.marketingStrategy?.campaignStrategy.audienceStrategy.primaryAudience ?? inputData.targetAudience,
@@ -424,7 +440,7 @@ function buildGenerateHashtagsStep(hashtagAgent: Agent) {
   description: 'Hashtag & SEO Agent — ranked hashtags + keywords per post.',
   inputSchema: ContentBundleSchema,
   outputSchema: ContentBundleSchema,
-  execute: async ({ inputData, getStepResult }) => {
+  execute: async ({ inputData, getStepResult, getInitData }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
     if (!briefResult?.brief) throw new Error('brief missing');
@@ -527,7 +543,7 @@ const scheduleStep = createStep({
     'generate-hashtags': ContentBundleSchema,
   }),
   outputSchema: CampaignContentDraftOutputSchema,
-  execute: async ({ inputData, getStepResult }) => {
+  execute: async ({ inputData, getStepResult, getInitData }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
     const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
@@ -537,6 +553,11 @@ const scheduleStep = createStep({
 
     const brief = briefResult.brief;
     const strategy = strategyResult.strategy;
+    const initialInput = getInitData<ContentCreationInput>();
+    const knowledgeSources = await retrieveProjectKnowledge(
+      initialInput.knowledgeScope,
+      `${brief.brandName} ${brief.product} ${brief.targetAudience}`,
+    );
 
     // Merge parallel outputs
     const posts = inputData['generate-visuals'].posts;
@@ -578,6 +599,7 @@ const scheduleStep = createStep({
       calendar,
       notes: qaNotes,
       sources: researchResult.research.sources,
+      knowledgeSources,
     };
   },
 });

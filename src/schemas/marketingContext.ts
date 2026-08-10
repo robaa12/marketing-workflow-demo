@@ -7,6 +7,43 @@ import { ProductProfileSchema, UserProductInputSchema } from './product.js';
 import { STPResultSchema } from './stp.js';
 import { MarketingPlanQualitySchema } from './planQuality.js';
 
+export const KnowledgeCitationSchema = z.object({
+  sourceId: z.string(),
+  pageId: z.string().optional(),
+  /** Stable vector chunk identifier for audit and replay. */
+  chunkId: z.string().optional(),
+  sourceType: z.string(),
+  title: z.string(),
+  url: z.string().url().optional(),
+  excerpt: z.string(),
+  score: z.number(),
+});
+export type KnowledgeCitation = z.infer<typeof KnowledgeCitationSchema>;
+
+/**
+ * Server-derived retrieval boundary. `sourceIds` is deliberately required
+ * whenever project knowledge is used: a project id alone is not sufficient to
+ * prove that a source is current and safe to ground a generation.
+ */
+export const KnowledgeScopeSchema = z.object({
+  projectId: z.string().uuid(),
+  sourceIds: z.array(z.string().uuid()).max(100),
+});
+export type KnowledgeScope = z.infer<typeof KnowledgeScopeSchema>;
+
+/** Project-owned editorial guardrails. Unlike retrieved website text, this is
+ * trusted configuration supplied by the authenticated backend and must be
+ * followed by every generation stage. */
+export const ProjectBrandProfileSchema = z.object({
+  voice: z.string().min(3).max(1000),
+  preferredTerms: z.array(z.string().min(1).max(180)).max(30).default([]),
+  prohibitedTerms: z.array(z.string().min(1).max(180)).max(30).default([]),
+  writingRules: z.array(z.string().min(1).max(180)).max(30).default([]),
+  ctaGuidance: z.string().max(500).optional(),
+  languageGuidance: z.string().max(500).optional(),
+});
+export type ProjectBrandProfile = z.infer<typeof ProjectBrandProfileSchema>;
+
 /**
  * Single source of truth for the marketing strategy workflow.
  *
@@ -31,6 +68,10 @@ export type MarketingStrategyContext = z.infer<typeof MarketingStrategyContextSc
  * The orchestrator derives the initial `MarketingStrategyContext` from this.
  */
 export const MarketingStrategyInputSchema = UserProductInputSchema.extend({
+  /** Added only by the authenticated backend; never chosen by a browser. */
+  knowledgeScope: KnowledgeScopeSchema.optional(),
+  /** Added only by the authenticated backend from the owning project. */
+  brandProfile: ProjectBrandProfileSchema.optional(),
   options: z
     .object({
       maxPersonas: z.number().int().min(1).max(3).default(3),
@@ -54,5 +95,6 @@ export const MarketingStrategyOutputSchema = z.object({
   smartObjectives: z.array(SmartObjectiveSchema).min(1),
   campaignStrategy: CampaignStrategySchema,
   planQuality: MarketingPlanQualitySchema,
+  knowledgeSources: z.array(KnowledgeCitationSchema).default([]),
 });
 export type MarketingStrategyOutput = z.infer<typeof MarketingStrategyOutputSchema>;

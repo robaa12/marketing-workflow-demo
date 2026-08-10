@@ -8,6 +8,7 @@ import {
   buildSmartObjectivesStep,
   buildSTPStrategyStep,
   buildSTPResearchStep,
+  buildStrategyRevisionStep,
   qualityGateStep,
   intakeGateStep,
 } from './steps/index.js';
@@ -50,6 +51,9 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
   const journeyStep = buildBuyerJourneyStep(deps.buyerJourneyAgent);
   const objectivesStep = buildSmartObjectivesStep(deps.smartObjectivesAgent);
   const campaignStep = buildCampaignPlannerStep(deps.campaignPlannerAgent);
+  const strategyRevisionStep = buildStrategyRevisionStep(
+    deps.campaignPlannerAgent,
+  );
 
   return createWorkflow({
     id: 'marketing-strategy-workflow',
@@ -93,6 +97,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
     .then(objectivesStep)
     .then(campaignStep)
     .then(qualityGateStep)
+    .then(strategyRevisionStep)
     .commit();
 }
 

@@ -14,9 +14,17 @@ export const qualityGateStep = createStep({
   execute: async ({ inputData, getStepResult }) => {
     const researchResult = getStepResult<{ stpResearch: z.infer<typeof STPResearchSchema> }>('stp-research');
     const research = researchResult?.stpResearch ?? { queries: ['unavailable'], citations: [], warnings: ['STP research was unavailable to the quality gate.'] };
+    const planQuality = auditMarketingPlan({ ...inputData, research });
     return {
       ...inputData,
-      planQuality: auditMarketingPlan({ ...inputData, research }),
+      planQuality: {
+        ...planQuality,
+        strategyRevision: {
+          attempted: false,
+          addressedIssueCodes: [],
+          remainingActionableIssueCodes: [],
+        },
+      },
     };
   },
 });

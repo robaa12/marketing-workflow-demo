@@ -11,6 +11,9 @@ import {
   STPResultSchema,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
+import { retrieveProjectKnowledge } from '../../../lib/project-knowledge.js';
+import { KnowledgeCitationSchema } from '../../../schemas/marketingContext.js';
+import type { MarketingStrategyInput } from '../../../schemas/marketingContext.js';
 
 /**
  * Step 6 — Campaign Planner.
@@ -42,8 +45,14 @@ export function buildCampaignPlannerStep(agent: Agent) {
       buyerJourney: z.array(BuyerJourneySchema).min(1),
       smartObjectives: z.array(SmartObjectiveSchema).min(1),
       campaignStrategy: CampaignStrategySchema,
+      knowledgeSources: z.array(KnowledgeCitationSchema),
     }),
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, getInitData }) => {
+      const initialInput = getInitData<MarketingStrategyInput>();
+      const knowledgeSources = await retrieveProjectKnowledge(
+        initialInput.knowledgeScope,
+        [inputData.product.name, inputData.product.targetMarket, inputData.product.valueProposition].filter(Boolean).join(' '),
+      );
       const campaignStrategy = await runCampaignPlanner(agent, {
         product: inputData.product,
         stp: inputData.stp,
@@ -56,6 +65,8 @@ export function buildCampaignPlannerStep(agent: Agent) {
           | 'conversion'
           | 'retention'
           | 'balanced',
+        knowledgeSources,
+        brandProfile: initialInput.brandProfile,
       });
       return {
         product: inputData.product,
@@ -64,6 +75,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
         buyerJourney: inputData.buyerJourney,
         smartObjectives: inputData.smartObjectives,
         campaignStrategy,
+        knowledgeSources,
       };
     },
   });
