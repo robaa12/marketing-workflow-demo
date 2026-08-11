@@ -14,9 +14,10 @@ This TypeScript/Mastra project turns a product brief into a marketing strategy a
 
 Use Node.js 22.18 or newer and install dependencies with `npm install`.
 
-- `INDUSTRY=Software BUSINESS_TYPE=SaaS npm run dev -- "<product description>"` runs the strategy CLI and writes JSON to stdout.
-- `npm run dev -- --content --platforms linkedin --duration "2 weeks" "<product description>"` also runs content creation.
-- `npm run studio` launches the Mastra development studio.
+- `INDUSTRY=Software BUSINESS_TYPE=SaaS npm run dev:cli -- "<product description>"` runs the strategy CLI and writes JSON to stdout.
+- `npm run dev:cli -- --content --platforms linkedin --duration "2 weeks" "<product description>"` also runs content creation.
+- `npm run dev` (or `npm run server`) launches the generated Mastra development server and Studio on port 4111.
+- `npm run build:mastra && npm start` builds and runs the generated production server.
 - `npm run typecheck` performs strict TypeScript checking without emitting files.
 - `npm run build` compiles the production output to `dist/`.
 - `npm test` runs the Vitest suite once; `npm run test:watch` keeps it running during development.

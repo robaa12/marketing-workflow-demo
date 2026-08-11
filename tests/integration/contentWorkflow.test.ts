@@ -1,4 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
+import { Mastra } from '@mastra/core/mastra';
+import { LibSQLStore } from '@mastra/libsql';
 import { describe, expect, it, vi } from 'vitest';
 import { buildContentCreationWorkflow, type ContentWorkflowDeps } from '../../src/workflows/content/index.js';
 import type { SocialPlatform } from '../../src/schemas/content.js';
@@ -169,6 +171,62 @@ describe('Content Creation workflow', () => {
     const result = await run.start({ inputData: { ...input, requireApproval: true } });
 
     expect(result.status).toBe('suspended');
+  });
+
+  it('uses reviewer feedback to rewrite, rerun QA, and request approval again', async () => {
+    const copywriterAgent = mockAgent({ text: 'Initial draft' }, { text: 'Reviewer revision' });
+    const copywriterStructurerAgent = mockAgent(
+      { object: [initialPost] },
+      { object: [revisedPost] },
+    );
+    const editorQaAgent = mockAgent(
+      { object: { passed: true, posts: [initialPost], notes: [], feedback: [] } },
+      { object: { passed: true, posts: [revisedPost], notes: [], feedback: [] } },
+    );
+    const workflow = buildContentCreationWorkflow(buildDeps({
+      copywriterAgent,
+      copywriterStructurerAgent,
+      editorQaAgent,
+    }));
+    new Mastra({
+      workflows: { contentCreationWorkflow: workflow },
+      storage: new LibSQLStore({ id: 'content-feedback-test', url: ':memory:' }),
+    });
+    const run = await workflow.createRun();
+
+    const firstReview = await run.start({
+      inputData: { ...input, requireApproval: true },
+    });
+    expect(firstReview.status).toBe('suspended');
+
+    const secondReview = await run.resume({
+      step: 'content-approval',
+      resumeData: {
+        approved: false,
+        postFeedback: [{
+          postId: initialPost.postId,
+          issue: 'The benefit is too vague.',
+          suggestion: 'Lead with the five hours saved each week.',
+          severity: 'warning',
+        }],
+      },
+    });
+    expect(secondReview.status).toBe('suspended');
+    expect(vi.mocked(copywriterAgent.generate)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(editorQaAgent.generate)).toHaveBeenCalledTimes(2);
+
+    const approved = await run.resume({
+      step: 'content-approval',
+      resumeData: { approved: true },
+    });
+    expect(approved.status).toBe('success');
+    if (approved.status !== 'success') return;
+    expect(approved.result.calendar[0]?.caption).toBe(revisedPost.caption);
+    expect(approved.result.notes).toContainEqual(expect.objectContaining({
+      postId: initialPost.postId,
+      message: 'Reviewer feedback applied: The benefit is too vague.',
+      resolved: true,
+    }));
   });
 
   it('stops after three failed QA iterations and schedules the latest rewrite', async () => {

@@ -25,6 +25,7 @@ export function buildBuyerJourneyAgent(model: string = getModel()): Agent {
 export interface BuyerJourneyInput {
   product: ProductProfile;
   personas: BuyerPersona[];
+  reviewFeedback?: string;
 }
 
 const JourneysArraySchema = z.array(BuyerJourneySchema).min(1);
@@ -42,6 +43,7 @@ export async function runBuyerJourney(
           {
             product: input.product,
             personas: input.personas,
+            ...(input.reviewFeedback ? { reviewFeedback: input.reviewFeedback } : {}),
           },
           null,
           2,

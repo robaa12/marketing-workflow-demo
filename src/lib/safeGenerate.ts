@@ -1,4 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
+import { MastraError } from '@mastra/core/error';
 import type { z } from 'zod';
 import { getProviderOptions } from './model.js';
 import { runWithAgentErrorHandling } from './errors.js';
@@ -19,6 +20,20 @@ import { withTimeout } from './timeout.js';
 type SimpleMessage = { role: 'user' | 'system'; content: string };
 
 const DEFAULT_AGENT_TIMEOUT_MS = 90_000;
+
+function isExpectedStructuredOutputFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    (error instanceof MastraError &&
+      error.id === 'STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED') ||
+    message.includes('Structured output validation failed') ||
+    message.includes('STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED') ||
+    message.includes('ZodError') ||
+    message.includes('Internal Server Error') ||
+    message.includes('APICallError') ||
+    message.includes('empty structured response')
+  );
+}
 
 function getAgentTimeoutMs(): number {
   const configured = Number.parseInt(process.env['MASTRA_AGENT_TIMEOUT_MS'] ?? '', 10);
@@ -94,13 +109,7 @@ export async function safeGenerate<T>(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Only fall back for *expected* failure classes; rethrow hard network bugs.
-      if (
-        msg.includes('STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED') ||
-        msg.includes('ZodError') ||
-        msg.includes('Internal Server Error') ||
-        msg.includes('APICallError') ||
-        msg.includes('empty structured response')
-      ) {
+      if (isExpectedStructuredOutputFailure(err)) {
         console.warn(`[safeGenerate] Structured output failed (${msg}), falling back to text mode...`);
       } else {
         throw err;

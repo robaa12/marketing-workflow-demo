@@ -26,6 +26,7 @@ export interface BuyerPersonaInput {
   product: ProductProfile;
   stp: STPResult;
   maxPersonas: number;
+  reviewFeedback?: string;
 }
 
 const PersonasArraySchema = z.array(BuyerPersonaSchema).min(1).max(3);
@@ -44,6 +45,7 @@ export async function runBuyerPersona(
             product: input.product,
             stp: input.stp,
             maxPersonas: input.maxPersonas,
+            ...(input.reviewFeedback ? { reviewFeedback: input.reviewFeedback } : {}),
           },
           null,
           2,

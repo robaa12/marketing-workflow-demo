@@ -22,6 +22,10 @@ import { buildSmartObjectivesAgent } from '../agents/smart-objectives/index.js';
 import { buildCampaignPlannerAgent } from '../agents/campaign-planner/index.js';
 import { buildImageGenerationAgent } from '../agents/image-generation/index.js';
 import {
+  buildContentItemAgent,
+  runContentItemGeneration,
+} from '../agents/content-item/index.js';
+import {
   buildContentResearcherAgent,
   buildContentStrategyAgent,
   buildCopywriterAgent,
@@ -30,12 +34,16 @@ import {
   buildHashtagSeoAgent,
   buildEditorQaAgent,
 } from '../agents/content/index.js';
-import { buildMarketingStrategyWorkflow } from '../workflows/marketing/index.js';
+import {
+  buildMarketingStrategyWorkflow,
+  buildStrategySectionRevisionWorkflow,
+} from '../workflows/marketing/index.js';
 import { buildContentCreationWorkflow } from '../workflows/content/index.js';
 import { imageGenerationWorkflow } from '../workflows/image-generation/index.js';
 import { getModel, getProviderOptions } from '../lib/model.js';
 import { researchSTPMarket } from '../lib/stp-research.js';
 import { deleteProjectKnowledge, indexProjectKnowledge, retrieveProjectKnowledge } from '../lib/project-knowledge.js';
+import { ContentItemGenerationInputSchema } from '../schemas/generated-content.js';
 
 function resolveStorageUrl(): string {
   const raw = process.env['MASTRA_STORAGE_URL'] ?? 'file:.mastra/marketing.db';
@@ -89,6 +97,7 @@ const buyerJourneyAgent = buildBuyerJourneyAgent(model);
 const smartObjectivesAgent = buildSmartObjectivesAgent(model);
 const campaignPlannerAgent = buildCampaignPlannerAgent(model);
 const imageGenerationAgent = buildImageGenerationAgent(model);
+const contentItemAgent = buildContentItemAgent(model);
 
 /**
  * Content creation agents.
@@ -116,6 +125,12 @@ export const marketingStrategyWorkflow = buildMarketingStrategyWorkflow({
   buyerJourneyAgent,
   smartObjectivesAgent,
   campaignPlannerAgent,
+});
+
+export const strategySectionRevisionWorkflow = buildStrategySectionRevisionWorkflow({
+  buyerPersonaAgent,
+  buyerJourneyAgent,
+  smartObjectivesAgent,
 });
 
 /**
@@ -163,6 +178,7 @@ export const mastra = new Mastra({
     smartObjectivesAgent,
     campaignPlannerAgent,
     imageGenerationAgent,
+    contentItemAgent,
     contentResearcherAgent,
     contentStrategyAgent,
     copywriterAgent,
@@ -172,6 +188,7 @@ export const mastra = new Mastra({
   },
   workflows: {
     marketingStrategyWorkflow,
+    strategySectionRevisionWorkflow,
     contentCreationWorkflow,
     imageGenerationWorkflow,
   },
@@ -227,6 +244,32 @@ export const mastra = new Mastra({
             },
           ], { maxSteps: 1, providerOptions: getProviderOptions(), modelSettings: { temperature: 0 } });
           return c.json({ answer: response.text?.trim() || citations.map((citation) => citation.excerpt).join('\n\n'), citations });
+        },
+      }),
+      registerApiRoute('/internal/content/generate', {
+        method: 'POST',
+        requiresAuth: false,
+        handler: async (c) => {
+          if (!validInternalToken(c.req.header('x-mastra-internal-token'))) {
+            return c.json({ error: 'Unauthorized' }, 401);
+          }
+          const parsed = ContentItemGenerationInputSchema.safeParse(
+            await c.req.json(),
+          );
+          if (!parsed.success) {
+            return c.json(
+              {
+                error: 'Invalid content generation request',
+                issues: parsed.error.issues,
+              },
+              400,
+            );
+          }
+          const draft = await runContentItemGeneration(
+            contentItemAgent,
+            parsed.data,
+          );
+          return c.json({ ...draft, model });
         },
       }),
       workflowRoute({

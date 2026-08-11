@@ -15,7 +15,11 @@ export const ChannelAllocationSchema = z.object({
     .max(100)
     .describe('Percentage of total budget or effort (0-100).'),
   primaryFunnelStage: FunnelStageEnum,
-  expectedKpis: z.array(z.string().min(3)).min(1).max(4),
+  expectedKpis: z
+    .array(z.string().min(3))
+    .min(1)
+    .max(4)
+    .describe('One to four KPIs used to evaluate this channel.'),
 });
 export type ChannelAllocation = z.infer<typeof ChannelAllocationSchema>;
 

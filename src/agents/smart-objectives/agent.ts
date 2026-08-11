@@ -25,6 +25,7 @@ export function buildSmartObjectivesAgent(model: string = getModel()): Agent {
 export interface SmartObjectivesInput {
   product: ProductProfile;
   buyerJourney: BuyerJourney[];
+  reviewFeedback?: string;
 }
 
 const ObjectivesArraySchema = z.array(SmartObjectiveSchema).min(1).max(10);
@@ -42,6 +43,7 @@ export async function runSmartObjectives(
           {
             product: input.product,
             buyerJourney: input.buyerJourney,
+            ...(input.reviewFeedback ? { reviewFeedback: input.reviewFeedback } : {}),
           },
           null,
           2,

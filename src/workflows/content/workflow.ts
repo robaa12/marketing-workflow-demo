@@ -9,6 +9,7 @@ import {
   CampaignContentOutputSchema,
   ResearchOutputSchema,
   QAReviewResultSchema,
+  PostFeedbackSchema,
   SocialPlatformEnum,
   type ContentBrief,
   type ContentStrategy,
@@ -17,6 +18,7 @@ import {
   type Post,
   type VisualPromptItem,
   type HashtagItem,
+  type PostFeedback,
 } from '../../schemas/content.js';
 import { CampaignStrategySchema, type CampaignStrategy } from '../../schemas/campaign.js';
 import { MarketingStrategyOutputSchema } from '../../schemas/marketingContext.js';
@@ -150,6 +152,31 @@ const QAReviewOutputSchema = ContentBundleSchema.extend({
   qaPassed: z.boolean(),
   qaIteration: z.number().int().positive(),
 });
+
+const EditorialReviewStateSchema = ContentBundleSchema.extend({
+  editorialApproved: z.boolean().default(false),
+  editorialRevision: z.number().int().nonnegative().default(0),
+});
+
+const EditorialPostFeedbackSchema = PostFeedbackSchema.extend({
+  issue: z.string().trim().min(1).max(500),
+  suggestion: z.string().trim().min(1).max(2_000),
+});
+
+const EditorialResumeSchema = z.object({
+  approved: z.boolean(),
+  feedback: z.string().trim().min(1).max(2_000).optional(),
+  postFeedback: z.array(EditorialPostFeedbackSchema).max(60).optional(),
+}).superRefine((value, context) => {
+  if (!value.approved && !value.feedback && !value.postFeedback?.length) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Rejected content requires feedback or postFeedback.',
+    });
+  }
+});
+
+const MAX_EDITORIAL_REVISIONS = 3;
 
 /**
  * Content agents are dependencies so callers can select models and tests can
@@ -620,43 +647,146 @@ const claimAuditStep = createStep({
   },
 });
 
-const approvalStep = createStep({
-  id: 'content-approval',
-  description: 'Optionally suspends after QA until a reviewer approves the campaign content.',
-  inputSchema: ContentBundleSchema,
-  outputSchema: ContentBundleSchema,
-  resumeSchema: z.object({
-    approved: z.boolean(),
-    feedback: z.string().max(2_000).optional(),
-  }),
-  suspendSchema: z.object({
-    reason: z.string(),
-    postCount: z.number().int().nonnegative(),
-    qaNoteCount: z.number().int().nonnegative(),
-  }),
-  execute: async ({ inputData, getInitData, resumeData, suspend }) => {
-    const initialInput = getInitData<ContentCreationInput>();
-    if (!initialInput.requireApproval) return inputData;
-    if (!resumeData) {
-      await suspend({
-        reason: 'Content is ready for editorial approval.',
-        postCount: inputData.posts.length,
-        qaNoteCount: inputData.qaNotes.length,
-      }, { resumeLabel: 'approve-content' });
-      return inputData;
+function normalizeEditorialFeedback(
+  posts: Post[],
+  feedback?: string,
+  postFeedback: PostFeedback[] = [],
+): PostFeedback[] {
+  const knownPostIds = new Set(posts.map((post) => post.postId));
+  const unknownPostIds = postFeedback
+    .map((item) => item.postId)
+    .filter((postId) => !knownPostIds.has(postId));
+  if (unknownPostIds.length) {
+    throw new Error(`Reviewer feedback references unknown posts: ${unknownPostIds.join(', ')}`);
+  }
+
+  const byPostId = new Map(postFeedback.map((item) => [item.postId, item]));
+  if (feedback) {
+    for (const post of posts) {
+      const specific = byPostId.get(post.postId);
+      byPostId.set(post.postId, specific
+        ? { ...specific, suggestion: `${specific.suggestion}\nAdditional reviewer feedback: ${feedback}` }
+        : {
+            postId: post.postId,
+            issue: 'Editorial review requested changes',
+            suggestion: feedback,
+            severity: 'warning',
+          });
     }
-    if (!resumeData.approved) throw new Error('Content approval was rejected. Update the brief and start a new run.');
-    if (!resumeData.feedback) return inputData;
-    return {
-      ...inputData,
-      qaNotes: [...inputData.qaNotes, {
+  }
+  return [...byPostId.values()];
+}
+
+function buildApprovalStep(
+  editorAgent: Agent,
+  copywriterAgent: Agent,
+  copywriterStructurerAgent: Agent,
+) {
+  return createStep({
+    id: 'content-approval',
+    description: 'Applies reviewer feedback, reruns QA, and suspends until content is approved.',
+    inputSchema: EditorialReviewStateSchema,
+    outputSchema: EditorialReviewStateSchema,
+    resumeSchema: EditorialResumeSchema,
+    suspendSchema: z.object({
+      reason: z.string(),
+      revision: z.number().int().nonnegative(),
+      revisionsRemaining: z.number().int().nonnegative(),
+      posts: ContentBundleSchema.shape.posts,
+      qaNotes: ContentBundleSchema.shape.qaNotes,
+    }),
+    execute: async ({ inputData, getInitData, getStepResult, resumeData, suspend }) => {
+      const initialInput = getInitData<ContentCreationInput>();
+      if (!initialInput.requireApproval) {
+        return { ...inputData, editorialApproved: true };
+      }
+      if (!resumeData) {
+        await suspend({
+          reason: inputData.editorialRevision === 0
+            ? 'Content is ready for editorial approval.'
+            : 'Reviewer feedback was applied and the revised content was rechecked by QA.',
+          revision: inputData.editorialRevision,
+          revisionsRemaining: MAX_EDITORIAL_REVISIONS - inputData.editorialRevision,
+          posts: inputData.posts,
+          qaNotes: inputData.qaNotes,
+        }, { resumeLabel: 'approve-content' });
+        return inputData;
+      }
+      if (resumeData.approved) {
+        return {
+          ...inputData,
+          editorialApproved: true,
+          qaNotes: resumeData.feedback
+            ? [...inputData.qaNotes, {
+                severity: 'info' as const,
+                message: `Reviewer approval note: ${resumeData.feedback}`,
+                resolved: true,
+              }]
+            : inputData.qaNotes,
+        };
+      }
+      if (inputData.editorialRevision >= MAX_EDITORIAL_REVISIONS) {
+        throw new Error(`Content was rejected after ${MAX_EDITORIAL_REVISIONS} editorial revisions.`);
+      }
+
+      const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
+      const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
+      const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
+      if (!briefResult?.brief) throw new Error('brief missing');
+      if (!strategyResult?.strategy) throw new Error('strategy missing');
+      if (!researchResult?.research) throw new Error('research missing');
+
+      const reviewerFeedback = normalizeEditorialFeedback(
+        inputData.posts,
+        resumeData.feedback,
+        resumeData.postFeedback,
+      );
+      let posts = await runCopywriterRewrite(copywriterAgent, {
+        brief: briefResult.brief,
+        strategy: strategyResult.strategy,
+        posts: inputData.posts,
+        feedback: reviewerFeedback,
+      }, copywriterStructurerAgent);
+      const qaNotes = [...inputData.qaNotes, ...reviewerFeedback.map((item) => ({
+        postId: item.postId,
         severity: 'info' as const,
-        message: `Reviewer feedback: ${resumeData.feedback}`,
+        message: `Reviewer feedback applied: ${item.issue}`,
         resolved: true,
-      }],
-    };
-  },
-});
+      }))];
+
+      // A human-requested rewrite must pass the same deterministic and model QA
+      // checks as the original draft before it is shown for re-approval.
+      for (let iteration = 1; iteration <= 3; iteration += 1) {
+        qaNotes.push(...runContentPreflight(briefResult.brief, posts));
+        const qaResult = await runQA(editorAgent, {
+          brief: briefResult.brief,
+          strategy: strategyResult.strategy,
+          research: researchResult.research,
+          posts,
+          iteration,
+        });
+        qaNotes.push(...qaResult.notes);
+        posts = qaResult.posts;
+        if (qaResult.passed) break;
+        if (iteration === 3) break;
+        posts = await runCopywriterRewrite(copywriterAgent, {
+          brief: briefResult.brief,
+          strategy: strategyResult.strategy,
+          posts,
+          feedback: qaResult.feedback,
+        }, copywriterStructurerAgent);
+      }
+
+      return {
+        ...inputData,
+        posts,
+        qaNotes,
+        editorialApproved: false,
+        editorialRevision: inputData.editorialRevision + 1,
+      };
+    },
+  });
+}
 
 // ── Workflow ──────────────────────────────────────────────────────────────
 
@@ -674,6 +804,11 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
   );
   const generateVisualsStep = buildGenerateVisualsStep(deps.visualPromptAgent);
   const generateHashtagsStep = buildGenerateHashtagsStep(deps.hashtagSeoAgent);
+  const approvalStep = buildApprovalStep(
+    deps.editorQaAgent,
+    deps.copywriterAgent,
+    deps.copywriterStructurerAgent,
+  );
 
   return createWorkflow({
     id: 'content-creation-workflow',
@@ -702,7 +837,21 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
       const { qaPassed: _qaPassed, qaIteration: _qaIteration, ...bundle } = inputData;
       return bundle;
     })
-    .then(approvalStep)
+    .dowhile(approvalStep, async ({ inputData, iterationCount }) => {
+      // One initial review, followed by at most MAX_EDITORIAL_REVISIONS revisions.
+      return !inputData.editorialApproved && iterationCount <= MAX_EDITORIAL_REVISIONS;
+    })
+    .map(async ({ inputData }) => {
+      if (!inputData.editorialApproved) {
+        throw new Error(`Content was not approved after ${MAX_EDITORIAL_REVISIONS} editorial revisions.`);
+      }
+      const {
+        editorialApproved: _editorialApproved,
+        editorialRevision: _editorialRevision,
+        ...bundle
+      } = inputData;
+      return bundle;
+    })
     .parallel([generateVisualsStep, generateHashtagsStep])
     .then(scheduleStep)
     .then(claimAuditStep)

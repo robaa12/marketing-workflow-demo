@@ -30,6 +30,7 @@ When \`brandProfile\` is supplied, it is authenticated project configuration and
 11. Product capabilities, integrations, compliance certifications, guarantees, customer names, and customer outcomes are facts only when supplied in the input. Otherwise phrase them as a test, question, or assumption — never as proof.
 12. When a baseline is not supplied, set \`baseline\` to "unknown — establish before launch". Do not invent traffic, conversion, churn, CAC, or revenue baselines.
 13. Use deadlines that are either ISO dates or a clear launch-relative window (for example, "within 30 days of launch").
+14. Every \`primaryChannels[].expectedKpis\` array must contain between 1 and 4 items. Never return more than 4 KPIs for one channel.
 
 # How to think
 - Pick the 3-5 channels with the highest expected return given the persona's \`preferredChannels\` and the STP \`targetedSegments\`.

@@ -43,30 +43,34 @@ cp .env.example .env
 # (Free key at https://openrouter.ai/keys — no credit card required.)
 
 # 3. Run the full workflow from the CLI
-npm run dev -- "A SaaS that automates weekly marketing reporting" \
+npm run dev:cli -- "A SaaS that automates weekly marketing reporting" \
   --industry="Software" \
   --businessType="SaaS"
 ```
 
-### Run the API for the AetherFlow frontend
+### Run the Mastra API
 
 ```bash
 npm run server
 ```
 
-The server listens on `http://localhost:4112` by default (`API_PORT` overrides
-it) and exposes two
-approval-aware workflow endpoints:
+`npm run server` is an alias for the generated Mastra development server. It
+listens on `http://localhost:4111` by default and exposes the registered
+workflows under `/api/workflows`, plus `/health` and the authenticated internal
+project-knowledge routes used by the Nest backend.
 
-- `POST /api/strategy` and `GET /api/strategy/:runId` build and poll a complete marketing strategy.
-- `POST /api/content` and `GET /api/content/:runId` build and poll posts from the approved `campaignStrategy` object.
-- `POST /api/strategy/:runId/cancel` and `POST /api/content/:runId/cancel` cancel an active run.
+For a production-style local run, build once and start the generated output:
 
-The React frontend uses the first workflow as a review gate. It sends the
-strategy to the content endpoint only after the user selects **Approve & create
-posts**.
+```bash
+npm run build:mastra
+npm start
+```
 
-The CLI serialises the final strategy as JSON to stdout.
+The React frontend talks to the Nest backend, whose workers call these Mastra
+workflow endpoints. The old browser-facing API remains available only as
+`npm run server:legacy` for compatibility testing.
+
+The CLI command serialises the final strategy as JSON to stdout.
 
 ### Project knowledge RAG
 

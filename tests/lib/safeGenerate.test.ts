@@ -1,9 +1,30 @@
 import type { Agent } from '@mastra/core/agent';
+import { ErrorCategory, ErrorDomain, MastraError } from '@mastra/core/error';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { safeGenerate } from '../../src/lib/safeGenerate.js';
 
 describe('safeGenerate', () => {
+  it('falls back when Mastra rejects structured output against the schema', async () => {
+    const validationError = new MastraError({
+      id: 'STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED',
+      domain: ErrorDomain.AGENT,
+      category: ErrorCategory.SYSTEM,
+      text: 'Structured output validation failed: expected array to have <=4 items',
+    });
+    const agent = {
+      generate: vi
+        .fn()
+        .mockRejectedValueOnce(validationError)
+        .mockResolvedValueOnce({ text: '{"value":7}' }),
+    } as unknown as Agent;
+
+    await expect(
+      safeGenerate(agent, [{ role: 'user', content: 'Return a value.' }], z.object({ value: z.number() })),
+    ).resolves.toEqual({ value: 7 });
+    expect(vi.mocked(agent.generate)).toHaveBeenCalledTimes(2);
+  });
+
   it('uses a later balanced JSON value when an earlier example fails the schema', async () => {
     const agent = {
       generate: vi.fn(async (_messages, options) => {
