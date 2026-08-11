@@ -27,12 +27,42 @@ export async function runSTPStrategy(
   product: ProductProfile,
   research?: STPResearch,
 ): Promise<STPStrategyResult> {
+  const compactProduct = {
+    name: product.name,
+    targetMarket: product.targetMarket,
+    type: product.type,
+    industry: product.industry,
+    businessModel: product.businessModel,
+    productMaturity: product.productMaturity,
+    pricingModel: product.pricingModel,
+    pricingNotes: product.pricingNotes,
+    intake: product.intake,
+    verifiedFacts: product.verifiedFacts
+      .slice(0, 6)
+      .map((fact) => fact.slice(0, 600)),
+    coreFeatures: product.coreFeatures.slice(0, 5),
+    customerProblems: product.customerProblems.slice(0, 5),
+    valueProposition: product.valueProposition,
+    uniqueSellingPoints: product.uniqueSellingPoints.slice(0, 4),
+    differentiators: product.differentiators.slice(0, 4),
+    constraints: product.constraints.slice(0, 3),
+    assumptions: product.assumptions.slice(0, 3),
+  };
+  const compactResearch = research && {
+    citations: research.citations.slice(0, 4).map((citation) => ({
+      title: citation.title,
+      publisher: citation.publisher,
+      excerpt: citation.excerpt.slice(0, 600),
+    })),
+    warnings: research.warnings.slice(0, 3),
+  };
+
   return safeGenerate(
     agent,
     [
       {
         role: 'user',
-        content: JSON.stringify({ product, research }, null, 2),
+        content: JSON.stringify({ product: compactProduct, research: compactResearch }),
       },
     ],
     STPResultSchema,

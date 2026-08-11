@@ -35,6 +35,8 @@ export interface VisualPromptInput {
   posts: Post[];
 }
 
+const MAX_VISUALS_PER_GENERATION = 12;
+
 /**
  * Run the visual prompt agent against a set of posts.
  * Includes research context (trends, content hooks) for more relevant visuals.
@@ -52,7 +54,17 @@ export async function runVisualPrompts(
     .map((h) => `- ${h.platform}: ${h.angle}`)
     .join('\n');
 
-  const prompt = `Generate one visual/video AI prompt per post below. Stay visually consistent across the whole set — this is one campaign, one feed.
+  const batches = Array.from(
+    { length: Math.ceil(posts.length / MAX_VISUALS_PER_GENERATION) },
+    (_, index) => posts.slice(
+      index * MAX_VISUALS_PER_GENERATION,
+      (index + 1) * MAX_VISUALS_PER_GENERATION,
+    ),
+  );
+
+  const results: VisualPromptResult[] = [];
+  for (const batchPosts of batches) {
+    const prompt = `Generate one visual/video AI prompt per post below. Stay visually consistent across the whole set — this is one campaign, one feed.
 
 == BRAND ==
 ${brief.brandName} — voice: ${brief.brandVoice}
@@ -69,15 +81,19 @@ ${hooksText || 'No specific hooks — use trends and brand voice.'}
 ${research.audienceInsights}
 
 == POSTS ==
-${posts.map((p) => `- [${p.postId}] ${p.platform} / format=${p.format}\n  caption: ${p.caption}\n  cta: ${p.cta}`).join('\n')}
+${batchPosts.map((p) => `- [${p.postId}] ${p.platform} / format=${p.format}\n  caption: ${p.caption}\n  cta: ${p.cta}`).join('\n')}
 
 Return an array matching the schema, one item per post. Use the trends and hooks above to make visuals more relevant and engaging. Keep visual world consistent across posts. Use the most appropriate per-platform aspect ratio:
-${JSON.stringify(posts.map((p) => ({ postId: p.postId, aspect: getPlatformRules(p.platform as SocialPlatform).format })), null, 2)}`;
+${JSON.stringify(batchPosts.map((p) => ({ postId: p.postId, aspect: getPlatformRules(p.platform as SocialPlatform).format })))}`;
 
-  return safeGenerate(
-    agent,
-    [{ role: 'user', content: prompt }],
-    VisualPromptItemSchema.array(),
-    'visual-prompt',
-  );
+    results.push(await safeGenerate(
+      agent,
+      [{ role: 'user', content: prompt }],
+      VisualPromptItemSchema.array(),
+      `visual-prompt:${batchPosts[0]?.postId}-${batchPosts.at(-1)?.postId}`,
+      { textFirst: true },
+    ));
+  }
+
+  return results.flat();
 }

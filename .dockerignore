@@ -1,0 +1,7 @@
+node_modules
+.mastra
+.data
+dist
+.env*
+!.env.example
+*.log

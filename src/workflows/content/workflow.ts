@@ -30,7 +30,10 @@ import {
   runQA,
 } from '../../agents/content/index.js';
 import { buildCalendar, parseDuration } from '../../tools/content-calendar.tool.js';
-import { runContentPreflight } from '../../lib/content-preflight.js';
+import {
+  ContentPreflightError,
+  runContentPreflight,
+} from '../../lib/content-preflight.js';
 import { auditCampaignClaimsForBrand } from '../../lib/claim-audit.js';
 import { resolveBrandContext } from '../../tools/brand-context.tool.js';
 import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
@@ -217,7 +220,7 @@ function buildResearchStep(researchAgent: Agent) {
     brief: ContentBriefSchema,
     research: ResearchOutputSchema,
   }),
-  retries: 3,
+  retries: 0,
   stateSchema: ContentWorkflowStateSchema,
   execute: async ({ inputData, state, setState }) => {
     const { brief } = inputData;
@@ -243,7 +246,7 @@ function buildStrategyStep(strategyAgent: Agent) {
     research: ResearchOutputSchema,
     strategy: ContentStrategySchema,
   }),
-  retries: 2,
+  retries: 0,
   execute: async ({ inputData }) => {
     const { brief, research } = inputData;
     const strategy = await runContentStrategy(strategyAgent, { brief, research });
@@ -267,22 +270,31 @@ function buildGenerateContentStep(
     strategy: ContentStrategySchema,
   }),
   outputSchema: ContentBundleSchema,
-  retries: 2,
+  retries: 0,
   execute: async ({ inputData }) => {
     const { brief, research, strategy } = inputData;
     const { weeks } = parseDuration(brief.duration);
     const postCount = Math.max(1, brief.postsPerWeek) * weeks;
 
     const platforms = brief.platforms as SocialPlatform[];
-    const results = await Promise.all(
-      platforms.map((platform) =>
-        runCopywriting(
-          copywriterAgent,
-          { brief, research, strategy, platform, postCount },
-          copywriterStructurerAgent,
-        ),
-      ),
-    );
+    const requestedPostCount = postCount * platforms.length;
+    if (requestedPostCount > brief.maxPosts) {
+      throw new ContentPreflightError([
+        `requested ${requestedPostCount} posts; limit is ${brief.maxPosts}`,
+      ]);
+    }
+    // The configured provider queues concurrent reasoning requests. Running
+    // platforms together caused one copywriter call to finish while the other
+    // stayed pending until its deadline. Keep one provider request in flight;
+    // runCopywriting also processes each platform's bounded batches in order.
+    const results = [];
+    for (const platform of platforms) {
+      results.push(await runCopywriting(
+        copywriterAgent,
+        { brief, research, strategy, platform, postCount },
+        copywriterStructurerAgent,
+      ));
+    }
     const posts = results.flat();
     posts.sort((a, b) => (a.postId < b.postId ? -1 : 1));
     return {
@@ -318,6 +330,7 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
   description: 'Visual Prompt Agent — image/video prompts per generated post.',
   inputSchema: ContentBundleSchema,
   outputSchema: ContentBundleSchema,
+  retries: 0,
   execute: async ({ inputData, getStepResult }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
@@ -355,9 +368,10 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
 function buildGenerateHashtagsStep(hashtagAgent: Agent) {
   return createStep({
   id: 'generate-hashtags',
-  description: 'Hashtag & SEO Agent — ranked hashtags + keywords per post.',
+  description: 'Builds ranked hashtags and keywords deterministically from researched signals.',
   inputSchema: ContentBundleSchema,
   outputSchema: ContentBundleSchema,
+  retries: 0,
   execute: async ({ inputData, getStepResult }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
@@ -381,12 +395,11 @@ const parallelOutputSchema = z.object({
   'generate-hashtags': ContentBundleSchema,
 });
 
-// ── Step 7: QA review + rewrite loop ─────────────────────────────────────
+// ── Step 7: Bounded QA review + rewrite ──────────────────────────────────
 
 /**
- * Combined QA + rewrite step for the feedback loop.
- * Runs QA, and if it fails, rewrites posts with the copywriter.
- * Returns explicit QA state for the `dowhile` condition.
+ * Runs one QA pass and, if it fails, one targeted copywriter rewrite. The
+ * deterministic preflight step already handles rules that do not need a model.
  */
 function buildQaReviewStep(
   editorAgent: Agent,
@@ -395,10 +408,10 @@ function buildQaReviewStep(
 ) {
   return createStep({
   id: 'qa-review',
-  description: 'QA review with copywriter feedback loop — rewrites posts until QA passes.',
+  description: 'One bounded QA review with a targeted copywriter rewrite when needed.',
   inputSchema: QAReviewInputSchema,
   outputSchema: QAReviewOutputSchema,
-  retries: 2,
+  retries: 0,
   stateSchema: ContentWorkflowStateSchema,
   execute: async ({ inputData, getStepResult, state, setState }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
@@ -437,13 +450,18 @@ function buildQaReviewStep(
       posts: inputData.posts,
       feedback: qaResult.feedback,
     }, copywriterStructurerAgent);
+    const rewritePreflightNotes = runContentPreflight(brief, rewrittenPosts);
 
     await setState({ ...state, qaIterations: inputData.qaIteration });
 
     return {
       ...inputData,
       posts: rewrittenPosts,
-      qaNotes: [...inputData.qaNotes, ...qaResult.notes],
+      qaNotes: [
+        ...inputData.qaNotes,
+        ...qaResult.notes,
+        ...rewritePreflightNotes,
+      ],
       qaPassed: false,
       qaIteration: inputData.qaIteration + 1,
     };
@@ -594,8 +612,8 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
     inputSchema: ContentCreationInputSchema,
     outputSchema: CampaignContentOutputSchema,
     retryConfig: {
-      attempts: 2,
-      delay: 2000,
+      attempts: 1,
+      delay: 0,
     },
     stateSchema: ContentWorkflowStateSchema,
     options: { validateInputs: true },
@@ -605,9 +623,11 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
     .then(strategyStep)
     .then(generateContentStep)
     .then(preflightStep)
-    .dowhile(qaReviewStep, async ({ inputData, iterationCount }) => {
-      // Loop while QA hasn't passed and we haven't hit max iterations
-      return !inputData.qaPassed && iterationCount < 3;
+    .dowhile(qaReviewStep, async () => {
+      // One bounded review/rewrite cycle keeps the workflow's worst-case model
+      // budget below the backend's fixed 600-second run deadline. Deterministic
+      // preflight checks already run immediately before this model review.
+      return false;
     })
     .map(async ({ inputData }) => {
       // Strip qaPassed/qaIteration before passing to visuals/hashtags
