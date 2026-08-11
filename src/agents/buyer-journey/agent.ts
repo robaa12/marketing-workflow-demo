@@ -28,6 +28,7 @@ export interface BuyerJourneyInput {
 }
 
 const JourneysArraySchema = z.array(BuyerJourneySchema).min(1);
+const BUYER_JOURNEY_TIMEOUT_MS = 180_000;
 
 export async function runBuyerJourney(
   agent: Agent,
@@ -50,5 +51,6 @@ export async function runBuyerJourney(
     ],
     JourneysArraySchema,
     'buyer-journey',
+    { timeoutMs: BUYER_JOURNEY_TIMEOUT_MS },
   );
 }

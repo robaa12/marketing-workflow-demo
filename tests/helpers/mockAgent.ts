@@ -10,7 +10,10 @@ import { vi } from 'vitest';
  * method: we just need `.generate(...)` to resolve to `{ object: payload }`.
  */
 export function buildMockAgent<Output>(payload: Output): Agent {
-  const generate = vi.fn(async () => ({ object: payload }));
+  const generate = vi.fn(async (
+    _messages?: unknown,
+    _options?: Record<string, any>,
+  ) => ({ object: payload }));
   // The Agent type has dozens of methods. We cast to `unknown` first to
   // avoid having to satisfy the entire interface, then to `Agent`.
   return { generate } as unknown as Agent;

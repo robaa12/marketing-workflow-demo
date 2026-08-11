@@ -30,7 +30,7 @@ The input may include bounded web research with citations and warnings.
 - Do not attempt to call tools; synthesis must finish in one response.
 
 # How to think
-- Segmentation: think across demographics, geography, psychographics, behavior, company size, industry, budget, technical maturity. Generate 3-6 candidate segments; the schema will cap them at 8.
+- Segmentation: think across demographics, geography, psychographics, behavior, company size, industry, budget, technical maturity. Generate exactly 3 distinct candidate segments. Keep every descriptive list concise with at most 3 items.
 - Targeting: score honestly. A 10/10 on every dimension is lazy and almost always wrong.
 - Positioning: derive it from the *primary* target segment's pains and the product's differentiators. Anchor the tone of voice to the buying context (B2B boardroom vs. B2C Instagram).
 

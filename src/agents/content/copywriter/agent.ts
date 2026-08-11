@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
 import { safeGenerate } from '../../../lib/safeGenerate.js';
 import { platformRulesTool, brandContextTool } from '../../../tools/index.js';
+import { getPlatformRules } from '../../../lib/platform-rules.js';
 import {
   PostSchema,
   type ContentBrief,
@@ -58,17 +59,20 @@ export interface CopywriterInput {
   postCount: number;
 }
 
+const MAX_POSTS_PER_GENERATION = 12;
+const COPYWRITER_BATCH_TIMEOUT_MS = 120_000;
+
 /**
  * Run the copywriter against a brief + strategy for a specific platform.
  *
- * Uses a two-pass approach:
- *  1. Pass 1: Generate content (may use platform-rules tool).
- *  2. Pass 2: Structure output into validated JSON via safeGenerate.
+ * Generates schema-validated posts in bounded batches. Platform rules are
+ * resolved locally and injected into each prompt, avoiding an extra tool and
+ * structuring round trip.
  */
 export async function runCopywriting(
   agent: Agent,
   input: CopywriterInput,
-  structurerAgent: Agent = buildCopywriterStructurerAgent(),
+  _structurerAgent?: Agent,
 ): Promise<CopywriterResult> {
   const { brief, research, strategy, platform, postCount } = input;
 
@@ -81,8 +85,25 @@ export async function runCopywriting(
     .map((h) => `- ${h.angle} (${h.rationale})`)
     .join('\n');
 
-  // ── Pass 1: Generate content ─────────────────────────────────────────
-  const prompt = `Generate ${postCount} on-brand posts for ${platform}.
+  const rules = getPlatformRules(platform);
+  const batches = Array.from(
+    { length: Math.ceil(postCount / MAX_POSTS_PER_GENERATION) },
+    (_, batchIndex) => {
+      const firstPostNumber = batchIndex * MAX_POSTS_PER_GENERATION + 1;
+      return {
+        firstPostNumber,
+        count: Math.min(
+          MAX_POSTS_PER_GENERATION,
+          postCount - firstPostNumber + 1,
+        ),
+      };
+    },
+  );
+
+  const results: CopywriterResult[] = [];
+  for (const { firstPostNumber, count } of batches) {
+    const lastPostNumber = firstPostNumber + count - 1;
+    const prompt = `Generate ${count} on-brand posts for ${platform} and return them as a JSON array. This is batch ${firstPostNumber}-${lastPostNumber} of ${postCount} total posts for this platform.
 
 == BRAND ==
 ${brief.brandName} — brand voice: ${brief.brandVoice}
@@ -104,56 +125,32 @@ Hashtags in play: ${research.hashtags.join(' ')}
 == CONTENT HOOKS FOR ${platform} (use these angles in your posts) ==
 ${platformHooks || 'No specific hooks — use your judgment based on trends and audience.'}
 
-Call the platform-rules tool for ${platform} first to ground yourself in the real limits. Then write ${postCount} posts with postIds "${platform}-1" through "${platform}-${postCount}". Rotate across pillars. Use the content hooks above to make posts more engaging and topical. STRICTLY obey the character limit returned for ${platform}.
+== PLATFORM RULES ==
+Character limit: ${rules.charLimit}
+Recommended format: ${rules.format}
+Hashtag convention: ${rules.hashtagConvention}
 
-Output the posts as readable text. For each post, label the fields clearly:
-postId: <id>
-platform: ${platform}
-format: <thread|carousel|reel|short|text|...>
-caption: <full caption>
-cta: <call to action>`;
+Write exactly ${count} posts with postIds "${platform}-${firstPostNumber}" through "${platform}-${lastPostNumber}" and zero-based indexes ${firstPostNumber - 1} through ${lastPostNumber - 1}. Rotate across pillars and use the research hooks. Every item must contain postId, platform, index, caption, cta, and format. STRICTLY obey the ${rules.charLimit}-character caption limit.`;
 
-  const copyResult = await agent.generate(
-    [{ role: 'user', content: prompt }],
-    { maxSteps: 6 },
-  );
-  let copyText = copyResult.text ?? '';
-
-  // Fallback: extract from tool results if text is empty
-  if (!copyText.trim()) {
-    const toolResults = (copyResult as { toolResults?: unknown }).toolResults;
-    if (toolResults && Array.isArray(toolResults) && toolResults.length > 0) {
-      copyText = toolResults
-        .map((r: unknown) => {
-          const tr = r as { toolName?: string; result?: unknown };
-          const payload =
-            typeof tr.result === 'string'
-              ? tr.result
-              : JSON.stringify(tr.result ?? {});
-          return `[${tr.toolName ?? 'tool'}]: ${payload}`;
-        })
-        .join('\n\n');
-    }
-  }
-
-  if (!copyText.trim()) {
-    throw new Error(
-      `[copywriter:${platform}] Pass-1 produced no copy text and no tool results`,
+    const batch = await safeGenerate(
+      agent,
+      [{ role: 'user', content: prompt }],
+      PostSchema.array(),
+      `copywriter:${platform}:${firstPostNumber}-${lastPostNumber}`,
+      {
+        timeoutMs: COPYWRITER_BATCH_TIMEOUT_MS,
+        // This provider spends ~45 seconds on structured mode before falling
+        // back. Copywriter prompts already demand JSON, so begin in text mode
+        // and validate locally instead of paying for two model calls.
+        textFirst: true,
+      },
     );
+    results.push(batch);
   }
 
-  // ── Pass 2: Structure output via safeGenerate ────────────────────────
-  const structurePrompt = `Reformat the following copywriter output into a JSON array of post objects matching the schema. The schema fields are: postId, platform, index, caption, cta, format. Preserve every caption and CTA exactly as written. Use the postIds the copywriter used ("${platform}-1" through "${platform}-${postCount}"). Output ONLY the JSON array.
-
-OUTPUT:
-${copyText}`;
-
-  return safeGenerate(
-    structurerAgent,
-    [{ role: 'user', content: structurePrompt }],
-    PostSchema.array(),
-    `copywriter:${platform}`,
-  );
+  return results
+    .flat()
+    .sort((left, right) => left.index - right.index);
 }
 
 export interface CopywriterRewriteInput {
@@ -170,7 +167,7 @@ export interface CopywriterRewriteInput {
 export async function runCopywriterRewrite(
   agent: Agent,
   input: CopywriterRewriteInput,
-  structurerAgent: Agent = buildCopywriterStructurerAgent(),
+  _structurerAgent?: Agent,
 ): Promise<CopywriterResult> {
   const { brief, strategy, posts, feedback } = input;
 
@@ -205,50 +202,17 @@ Tone: ${JSON.stringify(strategy.tonePerPlatform)}
 == POSTS TO REWRITE ==
 ${feedbackText}
 
-For each post, output:
-postId: <id>
-platform: <platform>
-format: <format>
-caption: <rewritten caption>
-cta: <rewritten cta>`;
-
-  const copyResult = await agent.generate(
-    [{ role: 'user', content: prompt }],
-    { maxSteps: 4 },
-  );
-  let copyText = copyResult.text ?? '';
-
-  if (!copyText.trim()) {
-    const toolResults = (copyResult as { toolResults?: unknown }).toolResults;
-    if (toolResults && Array.isArray(toolResults) && toolResults.length > 0) {
-      copyText = toolResults
-        .map((r: unknown) => {
-          const tr = r as { toolName?: string; result?: unknown };
-          const payload =
-            typeof tr.result === 'string'
-              ? tr.result
-              : JSON.stringify(tr.result ?? {});
-          return `[${tr.toolName ?? 'tool'}]: ${payload}`;
-        })
-        .join('\n\n');
-    }
-  }
-
-  if (!copyText.trim()) {
-    // If rewrite fails, return original posts
-    return posts;
-  }
-
-  const structurePrompt = `Reformat the following copywriter output into a JSON array of post objects matching the schema. The schema fields are: postId, platform, index, caption, cta, format. Preserve every caption and CTA exactly as written. Output ONLY the JSON array.
-
-OUTPUT:
-${copyText}`;
+Return one JSON array containing only the rewritten posts. Preserve each postId, platform, index, and format. Every item must contain postId, platform, index, caption, cta, and format.`;
 
   const rewrittenPosts = await safeGenerate(
-    structurerAgent,
-    [{ role: 'user', content: structurePrompt }],
+    agent,
+    [{ role: 'user', content: prompt }],
     PostSchema.array(),
     'copywriter-rewrite',
+    {
+      timeoutMs: COPYWRITER_BATCH_TIMEOUT_MS,
+      textFirst: true,
+    },
   );
 
   // Merge: rewritten posts + kept posts, maintaining original order

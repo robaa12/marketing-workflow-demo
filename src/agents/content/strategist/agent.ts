@@ -65,5 +65,6 @@ Return the structured object per schema.`;
     [{ role: 'user', content: prompt }],
     ContentStrategySchema,
     'content-strategy',
+    { timeoutMs: 150_000 },
   );
 }

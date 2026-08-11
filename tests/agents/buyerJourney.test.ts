@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runBuyerJourney } from '../../src/agents/buyer-journey/agent.js';
+import { BUYER_JOURNEY_PROMPT } from '../../src/prompts/buyerJourney.js';
+import { MarketingChannelEnum } from '../../src/schemas/common.js';
 import { buildMockAgent } from '../helpers/mockAgent.js';
 import {
   sampleJourney,
@@ -8,6 +10,12 @@ import {
 } from '../helpers/fixtures.js';
 
 describe('Buyer Journey agent', () => {
+  it('gives the model every canonical marketing channel value', () => {
+    for (const channel of MarketingChannelEnum.options) {
+      expect(BUYER_JOURNEY_PROMPT).toContain(`\`${channel}\``);
+    }
+  });
+
   it('returns one journey per persona', async () => {
     const agent = buildMockAgent([sampleJourney]);
     const result = await runBuyerJourney(agent, {

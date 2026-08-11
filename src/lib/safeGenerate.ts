@@ -1,14 +1,14 @@
 import type { Agent } from '@mastra/core/agent';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { getProviderOptions } from './model.js';
 import { runWithAgentErrorHandling } from './errors.js';
-import { withTimeout } from './timeout.js';
+import { OperationTimeoutError, withTimeout } from './timeout.js';
 
 /**
  * Wrapper around agent.generate that:
- *  1. Tries structuredOutput first (with jsonPromptInjection).
- *  2. On validation failure or API error, falls back to plain text generation
- *     and extracts / parses JSON manually.
+ *  1. Tries structuredOutput first by default (with jsonPromptInjection), or
+ *     starts in text mode when the caller opts out of an unreliable provider path.
+ *  2. Extracts, parses, and schema-validates JSON returned as plain text.
  *
  * This is necessary because free-tier OpenRouter providers frequently ignore
  * jsonPromptInjection or return 500s when structured output is requested.
@@ -19,11 +19,34 @@ import { withTimeout } from './timeout.js';
 type SimpleMessage = { role: 'user' | 'system'; content: string };
 
 const DEFAULT_AGENT_TIMEOUT_MS = 90_000;
+const MIN_AGENT_TIMEOUT_MS = 15_000;
+const MAX_AGENT_TIMEOUT_MS = 300_000;
 
-function getAgentTimeoutMs(): number {
+export interface SafeGenerateOptions {
+  /** Shared deadline across structured generation and all fallback passes. */
+  timeoutMs?: number;
+  /** Optional cap for only the first structured-output attempt. */
+  structuredAttemptTimeoutMs?: number;
+  /** Start in plain JSON text mode for providers where structured output stalls. */
+  textFirst?: boolean;
+}
+
+class RecoverableAttemptTimeoutError extends Error {
+  constructor(agentId: string, timeoutMs: number) {
+    super(`Structured output for ${agentId} stalled after ${timeoutMs}ms`);
+    this.name = 'RecoverableAttemptTimeoutError';
+  }
+}
+
+function clampAgentTimeoutMs(value: number): number {
+  return Math.min(Math.max(value, MIN_AGENT_TIMEOUT_MS), MAX_AGENT_TIMEOUT_MS);
+}
+
+function getAgentTimeoutMs(overrideMs?: number): number {
+  if (Number.isFinite(overrideMs)) return clampAgentTimeoutMs(overrideMs!);
   const configured = Number.parseInt(process.env['MASTRA_AGENT_TIMEOUT_MS'] ?? '', 10);
   if (!Number.isFinite(configured)) return DEFAULT_AGENT_TIMEOUT_MS;
-  return Math.min(Math.max(configured, 15_000), 300_000);
+  return clampAgentTimeoutMs(configured);
 }
 
 async function generateWithinTimeout(
@@ -32,16 +55,32 @@ async function generateWithinTimeout(
   options: Record<string, unknown>,
   agentId: string,
   deadlineAt: number,
+  totalTimeoutMs: number,
+  attemptTimeoutMs?: number,
 ): Promise<{ object?: unknown; text?: string }> {
   const remainingMs = Math.max(deadlineAt - Date.now(), 1);
-  return withTimeout(
-    (abortSignal) => agent.generate(messages as any, {
-      ...options,
-      abortSignal,
-    } as any),
-    remainingMs,
-    `safeGenerate: ${agentId}`,
-  );
+  const effectiveTimeoutMs = Math.min(remainingMs, attemptTimeoutMs ?? remainingMs);
+  try {
+    return await withTimeout(
+      (abortSignal) => agent.generate(messages as any, {
+        ...options,
+        abortSignal,
+      } as any),
+      effectiveTimeoutMs,
+      `safeGenerate: ${agentId}`,
+    );
+  } catch (error) {
+    // A fallback pass receives only the time left in the shared deadline. Tell
+    // callers the configured total rather than a confusing remainder such as
+    // 33575ms.
+    if (error instanceof OperationTimeoutError) {
+      if (effectiveTimeoutMs < remainingMs) {
+        throw new RecoverableAttemptTimeoutError(agentId, effectiveTimeoutMs);
+      }
+      throw new OperationTimeoutError(`safeGenerate: ${agentId}`, totalTimeoutMs);
+    }
+    throw error;
+  }
 }
 
 function parseCandidates<T>(text: string, schema: z.ZodSchema<T>): T | undefined {
@@ -64,46 +103,90 @@ function parseCandidates<T>(text: string, schema: z.ZodSchema<T>): T | undefined
   return undefined;
 }
 
+function schemaInstruction<T>(schema: z.ZodSchema<T>): string {
+  try {
+    return JSON.stringify(compactJsonSchema(z.toJSONSchema(schema)));
+  } catch {
+    return '[Schema conversion unavailable; follow the agent schema exactly.]';
+  }
+}
+
+/**
+ * Keep validation constraints while removing prose that the agent already has
+ * in its instructions. This makes a fallback materially smaller and faster.
+ */
+function compactJsonSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactJsonSchema);
+  if (!value || typeof value !== 'object') return value;
+
+  const omittedKeys = new Set(['$schema', 'description', 'default', 'examples', 'title']);
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !omittedKeys.has(key))
+      .map(([key, nested]) => [key, compactJsonSchema(nested)]),
+  );
+}
+
+function isRecoverableGenerationError(error: unknown): boolean {
+  if (error instanceof RecoverableAttemptTimeoutError) return true;
+  if (error instanceof z.ZodError) return true;
+
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('structured_output_schema_validation_failed') ||
+    normalized.includes('structured output validation failed') ||
+    normalized.includes('structured output failed validation') ||
+    normalized.includes('zoderror') ||
+    normalized.includes('internal server error') ||
+    normalized.includes('apicallerror') ||
+    normalized.includes('empty structured response')
+  );
+}
+
 export async function safeGenerate<T>(
   agent: Agent,
   messages: SimpleMessage[],
   schema: z.ZodSchema<T>,
   agentId = 'unknown-agent',
+  options: SafeGenerateOptions = {},
 ): Promise<T> {
   return runWithAgentErrorHandling(agentId, async () => {
-    const deadlineAt = Date.now() + getAgentTimeoutMs();
+    const timeoutMs = getAgentTimeoutMs(options.timeoutMs);
+    const deadlineAt = Date.now() + timeoutMs;
+    const structuredAttemptTimeoutMs = options.structuredAttemptTimeoutMs === undefined
+      ? undefined
+      : Math.min(Math.max(options.structuredAttemptTimeoutMs, 1_000), timeoutMs);
     // ── Attempt 1: native structured output ────────────────────────────────
-    try {
-      const response = await generateWithinTimeout(agent, messages, {
-        providerOptions: getProviderOptions(),
-        modelSettings: { temperature: 0.1 },
-        structuredOutput: {
-          schema,
-          jsonPromptInjection: true,
-        },
-        maxSteps: 1,
-        toolChoice: 'none',
-      }, agentId, deadlineAt);
+    if (!options.textFirst) {
+      try {
+        const response = await generateWithinTimeout(agent, messages, {
+          providerOptions: getProviderOptions(),
+          // safeGenerate owns cross-mode recovery. Provider-level retries can
+          // otherwise consume most of this shared deadline before fallback.
+          modelSettings: { temperature: 0.1, maxRetries: 0 },
+          structuredOutput: {
+            schema,
+            jsonPromptInjection: true,
+          },
+          maxSteps: 1,
+          toolChoice: 'none',
+        }, agentId, deadlineAt, timeoutMs, structuredAttemptTimeoutMs);
 
-      const object = response.object as T | undefined;
-      if (object !== undefined && object !== null) {
-        return schema.parse(object);
-      }
-      const textObject = parseCandidates(response.text ?? '', schema);
-      if (textObject !== undefined) return textObject;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Only fall back for *expected* failure classes; rethrow hard network bugs.
-      if (
-        msg.includes('STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED') ||
-        msg.includes('ZodError') ||
-        msg.includes('Internal Server Error') ||
-        msg.includes('APICallError') ||
-        msg.includes('empty structured response')
-      ) {
-        console.warn(`[safeGenerate] Structured output failed (${msg}), falling back to text mode...`);
-      } else {
-        throw err;
+        const object = response.object as T | undefined;
+        if (object !== undefined && object !== null) {
+          return schema.parse(object);
+        }
+        const textObject = parseCandidates(response.text ?? '', schema);
+        if (textObject !== undefined) return textObject;
+      } catch (err) {
+        // Only fall back for *expected* failure classes; rethrow hard network bugs.
+        if (isRecoverableGenerationError(err)) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[safeGenerate] Structured output failed (${msg}), falling back to text mode...`);
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -112,17 +195,24 @@ export async function safeGenerate<T>(
       {
         role: 'system',
         content:
-          'CRITICAL: Return ONLY valid JSON. No markdown fences, no commentary, no trailing prose. The JSON must strictly match the requested schema.',
+          'CRITICAL: Return ONLY one valid JSON value. No markdown fences, commentary, or trailing prose. ' +
+          'The JSON root may be an object or array as required by this JSON Schema:\n' +
+          schemaInstruction(schema),
       },
       ...messages,
     ];
 
     const response = await generateWithinTimeout(agent, fallbackMessages, {
       providerOptions: getProviderOptions(),
-      modelSettings: { temperature: 0.1 },
+      modelSettings: { temperature: 0.1, maxRetries: 0 },
       maxSteps: 1,
       toolChoice: 'none',
-    }, agentId, deadlineAt);
+    }, agentId, deadlineAt, timeoutMs);
+
+    if (response.object !== undefined && response.object !== null) {
+      const objectResult = schema.safeParse(response.object);
+      if (objectResult.success) return objectResult.data;
+    }
 
     const text = response.text ?? '';
     const parsed = parseCandidates(text, schema);
@@ -131,25 +221,30 @@ export async function safeGenerate<T>(
     // The model returned JSON but not this schema. Give it one short, focused
     // correction pass without tools. Empty text is corrected too: tool-calling
     // models can otherwise finish their step budget without a final response.
+    const correctionOptions: Record<string, unknown> = {
+      providerOptions: getProviderOptions(),
+      modelSettings: { temperature: 0, maxRetries: 0 },
+      toolChoice: 'none',
+      maxSteps: 1,
+    };
+    if (!options.textFirst) {
+      correctionOptions.structuredOutput = {
+        schema,
+        jsonPromptInjection: true,
+      };
+    }
+
     const correctionResponse = await generateWithinTimeout(agent, [
       ...fallbackMessages,
       {
         role: 'user',
-        content: `Your previous response was ${text.trim() ? 'invalid' : 'empty'} and did not match the required schema. Return exactly one JSON object matching the requested schema. Never return an array, markdown, explanation, or tool output. Previous response:\n${text.slice(0, 12_000) || '[empty response]'}`,
+        content: `Your previous response was ${text.trim() ? 'invalid' : 'empty'} and did not match the required schema. Return exactly one JSON value matching the supplied JSON Schema. Use an object or array according to the schema root. Never return markdown, explanation, or tool output. Previous response:\n${text.slice(0, 12_000) || '[empty response]'}`,
       },
-    ], {
-      providerOptions: getProviderOptions(),
-      modelSettings: { temperature: 0 },
-      structuredOutput: {
-        schema,
-        jsonPromptInjection: true,
-      },
-      toolChoice: 'none',
-      maxSteps: 1,
-    }, agentId, deadlineAt);
+    ], correctionOptions, agentId, deadlineAt, timeoutMs);
 
     if (correctionResponse.object !== undefined && correctionResponse.object !== null) {
-      return schema.parse(correctionResponse.object);
+      const objectResult = schema.safeParse(correctionResponse.object);
+      if (objectResult.success) return objectResult.data;
     }
 
     const corrected = parseCandidates(correctionResponse.text ?? '', schema);
