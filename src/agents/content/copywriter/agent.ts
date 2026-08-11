@@ -171,20 +171,33 @@ export async function runCopywriterRewrite(
 ): Promise<CopywriterResult> {
   const { brief, strategy, posts, feedback } = input;
 
-  const feedbackByPostId = new Map(feedback.map((f) => [f.postId, f]));
-  const postsToRewrite = posts.filter((p) => feedbackByPostId.has(p.postId));
-  const postsToKeep = posts.filter((p) => !feedbackByPostId.has(p.postId));
+  const strategyFeedback = feedback.filter((item) => item.postId === 'strategy');
+  const feedbackByPostId = new Map<string, PostFeedback[]>();
+  for (const item of feedback) {
+    if (item.postId === 'strategy') continue;
+    const existing = feedbackByPostId.get(item.postId) ?? [];
+    existing.push(item);
+    feedbackByPostId.set(item.postId, existing);
+  }
+  const postsToRewrite = posts.filter(
+    (post) => strategyFeedback.length > 0 || feedbackByPostId.has(post.postId),
+  );
 
   if (postsToRewrite.length === 0) return posts;
 
   const feedbackText = postsToRewrite
     .map((p) => {
-      const f = feedbackByPostId.get(p.postId)!;
+      const relevantFeedback = [
+        ...(feedbackByPostId.get(p.postId) ?? []),
+        ...strategyFeedback,
+      ];
       return `- [${p.postId}] ${p.platform}
   Current caption: ${p.caption}
   Current CTA: ${p.cta}
-  Issue: ${f.issue}
-  Suggestion: ${f.suggestion}`;
+  Required changes:
+${relevantFeedback
+  .map((item) => `  - ${item.issue}: ${item.suggestion}`)
+  .join('\n')}`;
     })
     .join('\n\n');
 
@@ -215,7 +228,15 @@ Return one JSON array containing only the rewritten posts. Preserve each postId,
     },
   );
 
-  // Merge: rewritten posts + kept posts, maintaining original order
+  // Merge only mutable copy fields, preserving post identity and original order.
   const rewrittenByPostId = new Map(rewrittenPosts.map((p) => [p.postId, p]));
-  return posts.map((p) => rewrittenByPostId.get(p.postId) ?? p);
+  return posts.map((post) => {
+    const rewritten = rewrittenByPostId.get(post.postId);
+    if (!rewritten) return post;
+    return {
+      ...post,
+      caption: rewritten.caption,
+      cta: rewritten.cta,
+    };
+  });
 }

@@ -16,8 +16,15 @@ describe('STP Strategy agent', () => {
     const generate = vi.fn(async (_messages: unknown, _options?: unknown) => ({ object: sampleStp }));
     const agent = { generate } as unknown as Agent;
     const oversizedExcerpt = 'evidence '.repeat(200);
+    const oversizedFact = 'verified '.repeat(100);
 
-    await runSTPStrategy(agent, sampleProduct, {
+    await runSTPStrategy(agent, {
+      ...sampleProduct,
+      verifiedFacts: Array.from(
+        { length: 8 },
+        (_, index) => `${index}:${oversizedFact}`,
+      ),
+    }, {
       queries: ['query'],
       citations: Array.from({ length: 6 }, (_, index) => ({
         title: `Source ${index}`,
@@ -31,7 +38,8 @@ describe('STP Strategy agent', () => {
 
     const messages = generate.mock.calls[0]?.[0] as Array<{ content: string }>;
     const payload = JSON.parse(messages[0]!.content);
-    expect(payload.product).not.toHaveProperty('verifiedFacts');
+    expect(payload.product.verifiedFacts).toHaveLength(6);
+    expect(payload.product.verifiedFacts[0].length).toBeLessThanOrEqual(600);
     expect(payload.research.citations).toHaveLength(4);
     expect(payload.research.citations[0].excerpt.length).toBeLessThanOrEqual(600);
     expect(payload.research.citations[0]).not.toHaveProperty('url');

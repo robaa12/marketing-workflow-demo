@@ -37,6 +37,9 @@ export async function runSTPStrategy(
     pricingModel: product.pricingModel,
     pricingNotes: product.pricingNotes,
     intake: product.intake,
+    verifiedFacts: product.verifiedFacts
+      .slice(0, 6)
+      .map((fact) => fact.slice(0, 600)),
     coreFeatures: product.coreFeatures.slice(0, 5),
     customerProblems: product.customerProblems.slice(0, 5),
     valueProposition: product.valueProposition,

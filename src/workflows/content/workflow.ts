@@ -30,7 +30,10 @@ import {
   runQA,
 } from '../../agents/content/index.js';
 import { buildCalendar, parseDuration } from '../../tools/content-calendar.tool.js';
-import { runContentPreflight } from '../../lib/content-preflight.js';
+import {
+  ContentPreflightError,
+  runContentPreflight,
+} from '../../lib/content-preflight.js';
 import { auditCampaignClaimsForBrand } from '../../lib/claim-audit.js';
 import { resolveBrandContext } from '../../tools/brand-context.tool.js';
 import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
@@ -274,6 +277,12 @@ function buildGenerateContentStep(
     const postCount = Math.max(1, brief.postsPerWeek) * weeks;
 
     const platforms = brief.platforms as SocialPlatform[];
+    const requestedPostCount = postCount * platforms.length;
+    if (requestedPostCount > brief.maxPosts) {
+      throw new ContentPreflightError([
+        `requested ${requestedPostCount} posts; limit is ${brief.maxPosts}`,
+      ]);
+    }
     // The configured provider queues concurrent reasoning requests. Running
     // platforms together caused one copywriter call to finish while the other
     // stayed pending until its deadline. Keep one provider request in flight;
@@ -441,13 +450,18 @@ function buildQaReviewStep(
       posts: inputData.posts,
       feedback: qaResult.feedback,
     }, copywriterStructurerAgent);
+    const rewritePreflightNotes = runContentPreflight(brief, rewrittenPosts);
 
     await setState({ ...state, qaIterations: inputData.qaIteration });
 
     return {
       ...inputData,
       posts: rewrittenPosts,
-      qaNotes: [...inputData.qaNotes, ...qaResult.notes],
+      qaNotes: [
+        ...inputData.qaNotes,
+        ...qaResult.notes,
+        ...rewritePreflightNotes,
+      ],
       qaPassed: false,
       qaIteration: inputData.qaIteration + 1,
     };

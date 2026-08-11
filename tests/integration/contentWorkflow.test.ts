@@ -206,6 +206,83 @@ describe('Content Creation workflow', () => {
     expect(vi.mocked(copywriterAgent.generate)).toHaveBeenCalledTimes(2);
   });
 
+  it('rewrites posts when QA reports a campaign-level strategy issue', async () => {
+    const copywriterAgent = mockAgent(
+      { object: [initialPost] },
+      { object: [revisedPost] },
+    );
+    const editorQaAgent = mockAgent({
+      object: {
+        passed: false,
+        notes: [],
+        feedback: [{
+          postId: 'strategy',
+          issue: 'The efficiency pillar is missing.',
+          suggestion: 'Rewrite the set to lead with time saved.',
+          severity: 'warning',
+        }],
+      },
+    });
+    const workflow = buildContentCreationWorkflow(buildDeps({
+      copywriterAgent,
+      editorQaAgent,
+    }));
+
+    const result = await (await workflow.createRun()).start({ inputData: input });
+
+    expect(result.status).toBe('success');
+    if (result.status !== 'success') return;
+    expect(result.result.calendar[0]?.caption).toBe(revisedPost.caption);
+    expect(vi.mocked(copywriterAgent.generate)).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects an unsafe QA rewrite before scheduling', async () => {
+    const unsafePost = {
+      ...revisedPost,
+      caption: 'x'.repeat(3_001),
+    };
+    const copywriterAgent = mockAgent(
+      { object: [initialPost] },
+      { object: [unsafePost] },
+    );
+    const editorQaAgent = mockAgent({
+      object: {
+        passed: false,
+        notes: [],
+        feedback: [{
+          postId: initialPost.postId,
+          issue: 'Weak benefit',
+          suggestion: 'Lead with time saved.',
+          severity: 'warning',
+        }],
+      },
+    });
+    const workflow = buildContentCreationWorkflow(buildDeps({
+      copywriterAgent,
+      editorQaAgent,
+    }));
+
+    const result = await (await workflow.createRun()).start({ inputData: input });
+
+    expect(result.status).toBe('failed');
+  });
+
+  it('rejects campaigns over maxPosts before copy generation', async () => {
+    const copywriterAgent = mockAgent({ object: [initialPost] });
+    const workflow = buildContentCreationWorkflow(buildDeps({ copywriterAgent }));
+
+    const result = await (await workflow.createRun()).start({
+      inputData: {
+        ...input,
+        platforms: ['linkedin', 'facebook'],
+        maxPosts: 1,
+      },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(vi.mocked(copywriterAgent.generate)).not.toHaveBeenCalled();
+  });
+
   it('derives platform, duration, and post volume from the marketing strategy', async () => {
     const posts = Array.from({ length: 8 }, (_, index) => ({
       ...initialPost,
