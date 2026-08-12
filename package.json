@@ -31,6 +31,7 @@
     "@mastra/libsql": "^1.18.0",
     "@mastra/observability": "^1.16.3",
     "@mastra/perplexity": "^0.2.0",
+    "@mastra/pg": "1.18.0",
     "@tavily/core": "^0.7.6",
     "zod": "^4.4.3"
   },
