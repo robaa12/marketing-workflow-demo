@@ -36,11 +36,11 @@ export function buildSmartObjectivesStep(agent: Agent) {
       smartObjectives: z.array(SmartObjectiveSchema).min(1),
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       const smartObjectives = await runSmartObjectives(agent, {
         product: inputData.product,
         buyerJourney: inputData.buyerJourney,
-      });
+      }, tracingContext);
       return {
         product: inputData.product,
         stp: inputData.stp,

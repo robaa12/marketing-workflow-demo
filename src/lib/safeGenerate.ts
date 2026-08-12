@@ -1,4 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import { z } from 'zod';
 import { getProviderOptions } from './model.js';
 import { runWithAgentErrorHandling } from './errors.js';
@@ -23,6 +24,8 @@ const MIN_AGENT_TIMEOUT_MS = 15_000;
 const MAX_AGENT_TIMEOUT_MS = 300_000;
 
 export interface SafeGenerateOptions {
+  /** Workflow trace shared by every model attempt for usage attribution. */
+  tracingContext?: TracingContext;
   /** Shared deadline across structured generation and all fallback passes. */
   timeoutMs?: number;
   /** Optional cap for only the first structured-output attempt. */
@@ -161,6 +164,7 @@ export async function safeGenerate<T>(
     if (!options.textFirst) {
       try {
         const response = await generateWithinTimeout(agent, messages, {
+          tracingContext: options.tracingContext,
           providerOptions: getProviderOptions(),
           // safeGenerate owns cross-mode recovery. Provider-level retries can
           // otherwise consume most of this shared deadline before fallback.
@@ -203,6 +207,7 @@ export async function safeGenerate<T>(
     ];
 
     const response = await generateWithinTimeout(agent, fallbackMessages, {
+      tracingContext: options.tracingContext,
       providerOptions: getProviderOptions(),
       modelSettings: { temperature: 0.1, maxRetries: 0 },
       maxSteps: 1,
@@ -222,6 +227,7 @@ export async function safeGenerate<T>(
     // correction pass without tools. Empty text is corrected too: tool-calling
     // models can otherwise finish their step budget without a final response.
     const correctionOptions: Record<string, unknown> = {
+      tracingContext: options.tracingContext,
       providerOptions: getProviderOptions(),
       modelSettings: { temperature: 0, maxRetries: 0 },
       toolChoice: 'none',

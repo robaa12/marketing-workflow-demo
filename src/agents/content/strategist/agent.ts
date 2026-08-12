@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
 import { safeGenerate } from '../../../lib/safeGenerate.js';
@@ -36,6 +37,7 @@ export interface ContentStrategyInput {
 export async function runContentStrategy(
   agent: Agent,
   input: ContentStrategyInput,
+  tracingContext?: TracingContext,
 ): Promise<ContentStrategyResult> {
   const { brief, research } = input;
 
@@ -65,6 +67,6 @@ Return the structured object per schema.`;
     [{ role: 'user', content: prompt }],
     ContentStrategySchema,
     'content-strategy',
-    { timeoutMs: 150_000 },
+    { timeoutMs: 150_000, tracingContext },
   );
 }

@@ -30,12 +30,12 @@ export function buildBuyerPersonaStep(agent: Agent) {
       personas: z.array(BuyerPersonaSchema).min(1).max(3),
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       const personas = await runBuyerPersona(agent, {
         product: inputData.product,
         stp: inputData.stp,
         maxPersonas: inputData.options.maxPersonas,
-      });
+      }, tracingContext);
       return {
         product: inputData.product,
         stp: inputData.stp,

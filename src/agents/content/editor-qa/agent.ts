@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
 import { safeGenerate } from '../../../lib/safeGenerate.js';
@@ -49,6 +50,7 @@ export interface EditorQaInput {
 export async function runQA(
   agent: Agent,
   input: EditorQaInput,
+  tracingContext?: TracingContext,
 ): Promise<EditorQaResult> {
   const { brief, strategy, research, posts, iteration = 1 } = input;
   if (posts.length === 0) {
@@ -120,7 +122,7 @@ Return only passed, notes, and feedback. Do not repeat or rewrite the posts in y
     [{ role: 'user', content: prompt }],
     QAReviewDecisionSchema,
     'editor-qa',
-    { textFirst: true },
+    { textFirst: true, tracingContext },
   );
 
   return { ...decision, posts };

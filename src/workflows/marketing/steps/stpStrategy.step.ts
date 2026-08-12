@@ -30,8 +30,13 @@ export function buildSTPStrategyStep(agent: Agent) {
       stp: STPResultSchema,
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
-    execute: async ({ inputData }) => {
-      const stp = await runSTPStrategy(agent, inputData.product, inputData.stpResearch);
+    execute: async ({ inputData, tracingContext }) => {
+      const stp = await runSTPStrategy(
+        agent,
+        inputData.product,
+        inputData.stpResearch,
+        tracingContext,
+      );
       return {
         product: inputData.product,
         stp,

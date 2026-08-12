@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
@@ -26,6 +27,7 @@ export async function runSTPStrategy(
   agent: Agent,
   product: ProductProfile,
   research?: STPResearch,
+  tracingContext?: TracingContext,
 ): Promise<STPStrategyResult> {
   const compactProduct = {
     name: product.name,
@@ -67,5 +69,6 @@ export async function runSTPStrategy(
     ],
     STPResultSchema,
     'stp-strategy',
+    { tracingContext },
   );
 }

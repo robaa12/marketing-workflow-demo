@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
 import { safeGenerate } from '../../../lib/safeGenerate.js';
@@ -39,6 +40,7 @@ export interface ContentResearcherInput {
 export async function runContentResearch(
   agent: Agent,
   input: ContentResearcherInput,
+  tracingContext?: TracingContext,
 ): Promise<ContentResearchResult> {
   const { brief } = input;
 
@@ -70,5 +72,6 @@ Output a JSON object with exactly: trends, hashtags, sources, contentHooks, comp
     [{ role: 'user', content: prompt }],
     ResearchOutputSchema,
     'content-researcher',
+    { tracingContext },
   );
 }

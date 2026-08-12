@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import { z } from 'zod';
 import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
@@ -25,6 +26,7 @@ export function buildBuyerJourneyAgent(model: string = getModel()): Agent {
 export interface BuyerJourneyInput {
   product: ProductProfile;
   personas: BuyerPersona[];
+  reviewFeedback?: string;
 }
 
 const JourneysArraySchema = z.array(BuyerJourneySchema).min(1);
@@ -33,6 +35,7 @@ const BUYER_JOURNEY_TIMEOUT_MS = 180_000;
 export async function runBuyerJourney(
   agent: Agent,
   input: BuyerJourneyInput,
+  tracingContext?: TracingContext,
 ): Promise<BuyerJourneyResult[]> {
   return safeGenerate(
     agent,
@@ -43,6 +46,9 @@ export async function runBuyerJourney(
           {
             product: input.product,
             personas: input.personas,
+            ...(input.reviewFeedback
+              ? { reviewFeedback: input.reviewFeedback }
+              : {}),
           },
           null,
           2,
@@ -51,6 +57,6 @@ export async function runBuyerJourney(
     ],
     JourneysArraySchema,
     'buyer-journey',
-    { timeoutMs: BUYER_JOURNEY_TIMEOUT_MS },
+    { timeoutMs: BUYER_JOURNEY_TIMEOUT_MS, tracingContext },
   );
 }

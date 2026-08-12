@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
 import { safeGenerate } from '../../../lib/safeGenerate.js';
@@ -73,6 +74,7 @@ export async function runCopywriting(
   agent: Agent,
   input: CopywriterInput,
   _structurerAgent?: Agent,
+  tracingContext?: TracingContext,
 ): Promise<CopywriterResult> {
   const { brief, research, strategy, platform, postCount } = input;
 
@@ -143,6 +145,7 @@ Write exactly ${count} posts with postIds "${platform}-${firstPostNumber}" throu
         // back. Copywriter prompts already demand JSON, so begin in text mode
         // and validate locally instead of paying for two model calls.
         textFirst: true,
+        tracingContext,
       },
     );
     results.push(batch);
@@ -168,6 +171,7 @@ export async function runCopywriterRewrite(
   agent: Agent,
   input: CopywriterRewriteInput,
   _structurerAgent?: Agent,
+  tracingContext?: TracingContext,
 ): Promise<CopywriterResult> {
   const { brief, strategy, posts, feedback } = input;
 
@@ -225,6 +229,7 @@ Return one JSON array containing only the rewritten posts. Preserve each postId,
     {
       timeoutMs: COPYWRITER_BATCH_TIMEOUT_MS,
       textFirst: true,
+      tracingContext,
     },
   );
 

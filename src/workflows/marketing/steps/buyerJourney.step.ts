@@ -33,11 +33,11 @@ export function buildBuyerJourneyStep(agent: Agent) {
       buyerJourney: z.array(BuyerJourneySchema).min(1),
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       const buyerJourney = await runBuyerJourney(agent, {
         product: inputData.product,
         personas: inputData.personas,
-      });
+      }, tracingContext);
       return {
         product: inputData.product,
         stp: inputData.stp,

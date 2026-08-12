@@ -28,8 +28,8 @@ export function buildProductAnalysisStep(agent: Agent) {
       product: ProductProfileSchema,
       options: WorkflowOptionsSchema,
     }),
-    execute: async ({ inputData }) => {
-      const product = await runProductAnalysis(agent, inputData);
+    execute: async ({ inputData, tracingContext }) => {
+      const product = await runProductAnalysis(agent, inputData, tracingContext);
       return {
         product,
         options: inputData.options,

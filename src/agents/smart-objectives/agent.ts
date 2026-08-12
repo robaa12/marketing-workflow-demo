@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import { z } from 'zod';
 import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
@@ -25,6 +26,7 @@ export function buildSmartObjectivesAgent(model: string = getModel()): Agent {
 export interface SmartObjectivesInput {
   product: ProductProfile;
   buyerJourney: BuyerJourney[];
+  reviewFeedback?: string;
 }
 
 const ObjectivesArraySchema = z.array(SmartObjectiveSchema).min(1).max(10);
@@ -32,6 +34,7 @@ const ObjectivesArraySchema = z.array(SmartObjectiveSchema).min(1).max(10);
 export async function runSmartObjectives(
   agent: Agent,
   input: SmartObjectivesInput,
+  tracingContext?: TracingContext,
 ): Promise<SmartObjectiveResult[]> {
   return safeGenerate(
     agent,
@@ -42,6 +45,9 @@ export async function runSmartObjectives(
           {
             product: input.product,
             buyerJourney: input.buyerJourney,
+            ...(input.reviewFeedback
+              ? { reviewFeedback: input.reviewFeedback }
+              : {}),
           },
           null,
           2,
@@ -50,5 +56,6 @@ export async function runSmartObjectives(
     ],
     ObjectivesArraySchema,
     'smart-objectives',
+    { tracingContext },
   );
 }

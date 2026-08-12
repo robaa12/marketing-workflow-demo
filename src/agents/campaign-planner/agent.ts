@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
 import {
@@ -47,6 +48,7 @@ export interface CampaignPlannerInput {
 export async function runCampaignPlanner(
   agent: Agent,
   input: CampaignPlannerInput,
+  tracingContext?: TracingContext,
 ): Promise<CampaignStrategyResult> {
   const contextForAgent = {
     product: input.product,
@@ -67,5 +69,6 @@ export async function runCampaignPlanner(
     ],
     CampaignStrategySchema,
     'campaign-planner',
+    { tracingContext },
   );
 }

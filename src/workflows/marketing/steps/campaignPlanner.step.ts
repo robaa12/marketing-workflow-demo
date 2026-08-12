@@ -43,7 +43,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
       smartObjectives: z.array(SmartObjectiveSchema).min(1),
       campaignStrategy: CampaignStrategySchema,
     }),
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       const campaignStrategy = await runCampaignPlanner(agent, {
         product: inputData.product,
         stp: inputData.stp,
@@ -56,7 +56,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
           | 'conversion'
           | 'retention'
           | 'balanced',
-      });
+      }, tracingContext);
       return {
         product: inputData.product,
         stp: inputData.stp,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BuyerPersonaSchema,
+  BuyerJourneySchema,
   CampaignStrategySchema,
   ContentTypeEnum,
   FunnelStageEnum,
@@ -195,6 +196,64 @@ describe('BuyerPersonaSchema', () => {
         summary: 'long enough summary',
       }),
     ).toThrow();
+  });
+});
+
+describe('BuyerJourneySchema', () => {
+  it('maps an unexpected model-authored content type to other', () => {
+    const journey = {
+      personaId: 'priya-growth',
+      personaName: 'Priya Shah',
+      awareness: {
+        stage: 'awareness',
+        problems: ['Reporting takes too long'],
+        questions: ['Why is reporting so slow?'],
+        contentNeeds: [
+          { type: 'educational-guide', topic: 'Reporting basics', goal: 'educate' },
+        ],
+        channels: ['linkedin'],
+        kpis: [],
+      },
+      consideration: {
+        stage: 'consideration',
+        problems: ['Comparing automation options'],
+        questions: ['Which option integrates fastest?'],
+        contentNeeds: [
+          { type: 'buyer-guide', topic: 'Vendor selection', goal: 'compare' },
+        ],
+        channels: ['linkedin'],
+        kpis: [],
+        evaluationCriteria: ['Time to value'],
+        competitors: ['Manual reporting'],
+        trustSignals: ['Customer proof'],
+        requiredInformation: ['Integration coverage'],
+      },
+      decision: {
+        stage: 'decision',
+        objections: ['Migration effort'],
+        purchaseTriggers: ['New reporting deadline'],
+        cta: 'Start a trial',
+        channels: ['email'],
+        kpis: [],
+      },
+      retention: {
+        stage: 'retention',
+        followUp: ['Onboarding check-in'],
+        upsellOpportunities: [],
+        customerEducation: ['Weekly reporting workshop'],
+        channels: ['email'],
+      },
+      advocacy: {
+        stage: 'advocacy',
+        referralOpportunities: ['Peer referral'],
+        reviews: ['Case study interview'],
+        communityEngagement: ['Customer roundtable'],
+      },
+    };
+
+    const parsed = BuyerJourneySchema.parse(journey);
+    expect(parsed.awareness.contentNeeds[0]?.type).toBe('other');
+    expect(parsed.consideration.contentNeeds[0]?.type).toBe('other');
   });
 });
 

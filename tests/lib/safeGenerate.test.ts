@@ -4,6 +4,31 @@ import { z } from 'zod';
 import { safeGenerate } from '../../src/lib/safeGenerate.js';
 
 describe('safeGenerate', () => {
+  it('forwards the workflow tracing context to every generation attempt', async () => {
+    const tracingContext = { currentSpan: {} };
+    let calls = 0;
+    const agent = {
+      generate: vi.fn(async (_messages, options) => {
+        calls += 1;
+        expect(options?.tracingContext).toBe(tracingContext);
+        if (calls === 1) throw new Error('APICallError');
+        if (calls === 2) return { text: '{"wrong":true}' };
+        return { object: { value: 7 } };
+      }),
+    } as unknown as Agent;
+
+    await expect(
+      safeGenerate(
+        agent,
+        [{ role: 'user', content: 'Return a value.' }],
+        z.object({ value: z.number() }),
+        'trace-test',
+        { tracingContext: tracingContext as never },
+      ),
+    ).resolves.toEqual({ value: 7 });
+    expect(vi.mocked(agent.generate)).toHaveBeenCalledTimes(3);
+  });
+
   it('falls back when Mastra reports its current structured validation error text', async () => {
     const generate = vi.fn(async (_messages: unknown, options?: Record<string, any>) => {
       if (options?.structuredOutput) {

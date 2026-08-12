@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../lib/model.js';
 import { safeGenerate } from '../../lib/safeGenerate.js';
@@ -30,6 +31,7 @@ export function buildProductAnalysisAgent(model: string = getModel()): Agent {
 export async function runProductAnalysis(
   agent: Agent,
   input: UserProductInput,
+  tracingContext?: TracingContext,
 ): Promise<ProductAnalysisResult> {
   const analysis = await safeGenerate(
     agent,
@@ -41,6 +43,7 @@ export async function runProductAnalysis(
     ],
     ProductProfileSchema,
     'product-analysis',
+    { tracingContext },
   );
   return {
     ...analysis,

@@ -222,9 +222,13 @@ function buildResearchStep(researchAgent: Agent) {
   }),
   retries: 0,
   stateSchema: ContentWorkflowStateSchema,
-  execute: async ({ inputData, state, setState }) => {
+  execute: async ({ inputData, state, setState, tracingContext }) => {
     const { brief } = inputData;
-    const research = await runContentResearch(researchAgent, { brief });
+    const research = await runContentResearch(
+      researchAgent,
+      { brief },
+      tracingContext,
+    );
     await setState({ ...state, sourceCount: research.sources.length });
     return { brief, research };
   },
@@ -247,9 +251,13 @@ function buildStrategyStep(strategyAgent: Agent) {
     strategy: ContentStrategySchema,
   }),
   retries: 0,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, tracingContext }) => {
     const { brief, research } = inputData;
-    const strategy = await runContentStrategy(strategyAgent, { brief, research });
+    const strategy = await runContentStrategy(
+      strategyAgent,
+      { brief, research },
+      tracingContext,
+    );
     return { brief, research, strategy };
   },
   });
@@ -271,7 +279,7 @@ function buildGenerateContentStep(
   }),
   outputSchema: ContentBundleSchema,
   retries: 0,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, tracingContext }) => {
     const { brief, research, strategy } = inputData;
     const { weeks } = parseDuration(brief.duration);
     const postCount = Math.max(1, brief.postsPerWeek) * weeks;
@@ -293,6 +301,7 @@ function buildGenerateContentStep(
         copywriterAgent,
         { brief, research, strategy, platform, postCount },
         copywriterStructurerAgent,
+        tracingContext,
       ));
     }
     const posts = results.flat();
@@ -331,7 +340,7 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
   inputSchema: ContentBundleSchema,
   outputSchema: ContentBundleSchema,
   retries: 0,
-  execute: async ({ inputData, getStepResult }) => {
+  execute: async ({ inputData, getStepResult, tracingContext }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
     const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
@@ -344,7 +353,7 @@ function buildGenerateVisualsStep(visualAgent: Agent) {
       strategy: strategyResult.strategy,
       research: researchResult.research,
       posts: inputData.posts,
-    });
+    }, tracingContext);
     const visuals = await Promise.all(visualPrompts.map(async (visual) => {
       const image = await generateImageAsset({
         prompt: visual.prompt,
@@ -413,7 +422,7 @@ function buildQaReviewStep(
   outputSchema: QAReviewOutputSchema,
   retries: 0,
   stateSchema: ContentWorkflowStateSchema,
-  execute: async ({ inputData, getStepResult, state, setState }) => {
+  execute: async ({ inputData, getStepResult, state, setState, tracingContext }) => {
     const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
     const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
     const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
@@ -429,7 +438,7 @@ function buildQaReviewStep(
       research: researchResult.research,
       posts: inputData.posts,
       iteration: inputData.qaIteration,
-    });
+    }, tracingContext);
 
     // If QA passed, we're done
     if (qaResult.passed) {
@@ -449,7 +458,7 @@ function buildQaReviewStep(
       strategy,
       posts: inputData.posts,
       feedback: qaResult.feedback,
-    }, copywriterStructurerAgent);
+    }, copywriterStructurerAgent, tracingContext);
     const rewritePreflightNotes = runContentPreflight(brief, rewrittenPosts);
 
     await setState({ ...state, qaIterations: inputData.qaIteration });

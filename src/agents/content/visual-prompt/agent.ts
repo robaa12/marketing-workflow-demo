@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
 import { safeGenerate } from '../../../lib/safeGenerate.js';
@@ -45,6 +46,7 @@ const MAX_VISUALS_PER_GENERATION = 12;
 export async function runVisualPrompts(
   agent: Agent,
   input: VisualPromptInput,
+  tracingContext?: TracingContext,
 ): Promise<VisualPromptResult> {
   const { brief, strategy, research, posts } = input;
   if (posts.length === 0) return [];
@@ -91,7 +93,7 @@ ${JSON.stringify(batchPosts.map((p) => ({ postId: p.postId, aspect: getPlatformR
       [{ role: 'user', content: prompt }],
       VisualPromptItemSchema.array(),
       `visual-prompt:${batchPosts[0]?.postId}-${batchPosts.at(-1)?.postId}`,
-      { textFirst: true },
+      { textFirst: true, tracingContext },
     ));
   }
 

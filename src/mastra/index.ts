@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { Mastra } from '@mastra/core';
+import { registerApiRoute } from '@mastra/core/server';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { LibSQLStore } from '@mastra/libsql';
 import { workflowRoute } from '@mastra/ai-sdk';
@@ -27,11 +28,64 @@ import {
   buildHashtagSeoAgent,
   buildEditorQaAgent,
 } from '../agents/content/index.js';
-import { buildMarketingStrategyWorkflow } from '../workflows/marketing/index.js';
+import {
+  buildMarketingStrategyWorkflow,
+  buildStrategySectionRevisionWorkflow,
+} from '../workflows/marketing/index.js';
 import { buildContentCreationWorkflow } from '../workflows/content/index.js';
 import { imageGenerationWorkflow } from '../workflows/image-generation/index.js';
 import { getModel } from '../lib/model.js';
 import { researchSTPMarket } from '../lib/stp-research.js';
+import { getWorkflowUsage } from '../lib/workflowUsage.js';
+
+const billableWorkflowIds = new Set([
+  'marketingStrategyWorkflow',
+  'strategySectionRevisionWorkflow',
+  'contentCreationWorkflow',
+]);
+
+const workflowUsageRoute = registerApiRoute(
+  '/internal/workflow-usage/:workflowId/:runId',
+  {
+    method: 'GET',
+    requiresAuth: false,
+    middleware: async (context, next) => {
+      const expected = process.env['MASTRA_INTERNAL_TOKEN'];
+      const provided = context.req.header('x-mastra-internal-token');
+      if (!expected || provided !== expected) {
+        return context.json({ error: 'Unauthorized' }, 401);
+      }
+      await next();
+    },
+    handler: async (context) => {
+      const workflowId = context.req.param('workflowId');
+      if (!billableWorkflowIds.has(workflowId)) {
+        return context.json({ error: 'Unknown workflow' }, 404);
+      }
+      const observability = await context
+        .get('mastra')
+        .getStorage()
+        ?.getStore('observability');
+      if (!observability) {
+        return context.json(
+          { error: 'Observability metrics are unavailable' },
+          503,
+        );
+      }
+      const rawStartedAt = context.req.query('startedAt');
+      const startedAt = rawStartedAt ? new Date(rawStartedAt) : undefined;
+      if (startedAt && Number.isNaN(startedAt.getTime())) {
+        return context.json({ error: 'Invalid startedAt timestamp' }, 400);
+      }
+      const usage = await getWorkflowUsage(
+        observability,
+        context.req.param('runId'),
+        startedAt,
+      );
+      return context.json(usage);
+    },
+  },
+);
 
 function resolveStorageUrl(): string {
   const raw = process.env['MASTRA_STORAGE_URL'] ?? 'file:.mastra/marketing.db';
@@ -108,6 +162,13 @@ export const marketingStrategyWorkflow = buildMarketingStrategyWorkflow({
   campaignPlannerAgent,
 });
 
+export const strategySectionRevisionWorkflow =
+  buildStrategySectionRevisionWorkflow({
+    buyerPersonaAgent,
+    buyerJourneyAgent,
+    smartObjectivesAgent,
+  });
+
 /**
  * Content Creation workflow.
  *
@@ -162,6 +223,7 @@ export const mastra = new Mastra({
   },
   workflows: {
     marketingStrategyWorkflow,
+    strategySectionRevisionWorkflow,
     contentCreationWorkflow,
     imageGenerationWorkflow,
   },
@@ -169,6 +231,7 @@ export const mastra = new Mastra({
     port: Number(process.env['PORT'] ?? 4111),
     host: process.env['MASTRA_HOST'] ?? 'localhost',
     apiRoutes: [
+      workflowUsageRoute,
       workflowRoute({
         path: '/workflow/stream',
         workflow: 'marketingStrategyWorkflow',

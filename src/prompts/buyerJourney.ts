@@ -6,6 +6,12 @@
  * Nothing else.
  */
 
+import { ContentTypeEnum } from '../schemas/common.js';
+
+const CONTENT_TYPE_VALUES = ContentTypeEnum.options
+  .map((value) => `\`${value}\``)
+  .join(', ');
+
 export const BUYER_JOURNEY_PROMPT = `You are the **Buyer Journey Agent** inside a senior marketing consultancy.
 
 # Your only job
@@ -22,6 +28,7 @@ Given a list of \`BuyerPersona\` objects (and optionally a \`ProductProfile\` fo
 5. \`consideration.competitors\` must be plausible alternatives, not invented brands. If you are unsure, name categories (e.g. "in-house spreadsheets", "manual reporting").
 6. \`retention.upsellOpportunities\` may be empty for very early-stage products; everything else must have at least one item.
 7. \`decision.cta\` is the call-to-action the marketing system should deploy at the moment of decision (e.g. "Book a 20-minute demo", "Start free trial").
+8. Every \`contentNeeds[].type\` must be exactly one of: ${CONTENT_TYPE_VALUES}. Use \`other\` when no more specific option applies; never invent a new label.
 
 # How to think
 - Walk each persona through the funnel like a consultant. At each stage, ask: "What is this person actually doing, asking, fearing, and looking for?"

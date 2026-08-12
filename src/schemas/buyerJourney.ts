@@ -1,13 +1,18 @@
 import { z } from 'zod';
 import { ContentTypeEnum, FunnelStageEnum, MarketingChannelEnum } from './common.js';
 
+// Content type is model-authored descriptive metadata. Keep the provider-facing
+// JSON Schema constrained to the canonical enum, but degrade an unexpected label
+// to the explicit `other` bucket instead of failing the whole strategy workflow.
+const BuyerJourneyContentTypeSchema = ContentTypeEnum.catch('other');
+
 const StageSchemaBase = z.object({
   problems: z.array(z.string().min(3)).min(1).max(5),
   questions: z.array(z.string().min(3)).min(1).max(5),
   contentNeeds: z
     .array(
       z.object({
-        type: ContentTypeEnum,
+        type: BuyerJourneyContentTypeSchema,
         topic: z.string().min(3),
         goal: z.string().min(3),
       }),
