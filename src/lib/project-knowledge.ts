@@ -32,18 +32,64 @@ export interface IndexSourceInput {
   }>;
 }
 
-const embeddingModel =
-  process.env['OLLAMA_EMBEDDING_MODEL'] ?? 'nomic-embed-text-v2-moe';
-const embeddingDimensions = Number(
-  process.env['RAG_EMBEDDING_DIMENSIONS'] ?? 768,
+export type RagEmbeddingProvider = 'gemini' | 'ollama';
+
+const embeddingProvider = readEmbeddingProvider();
+const embeddingDimensions = readPositiveInteger(
+  'RAG_EMBEDDING_DIMENSIONS',
+  768,
 );
+const embeddingModel =
+  embeddingProvider === 'gemini'
+    ? readGeminiModel()
+    : process.env['OLLAMA_EMBEDDING_MODEL'] ?? 'nomic-embed-text-v2-moe';
 const indexVersion = (process.env['RAG_INDEX_VERSION'] ?? 'pgvector-v1')
   .replace(/[^a-zA-Z0-9_]/g, '_');
-export const PROJECT_KNOWLEDGE_INDEX =
-  `project_knowledge_${indexVersion}`;
+export const PROJECT_KNOWLEDGE_INDEX = buildIndexName(
+  `project_knowledge_${indexVersion}_${embeddingProvider}_${embeddingModel}_${embeddingDimensions}`,
+);
 const ollamaBaseUrl = (
   process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
 ).replace(/\/+$/, '');
+const geminiBaseUrl = (
+  process.env['GEMINI_API_BASE_URL'] ??
+  'https://generativelanguage.googleapis.com/v1beta'
+).replace(/\/+$/, '');
+
+function readEmbeddingProvider(): RagEmbeddingProvider {
+  const provider = process.env['RAG_EMBEDDING_PROVIDER'] ?? 'gemini';
+  if (provider !== 'gemini' && provider !== 'ollama') {
+    throw new Error(
+      'RAG_EMBEDDING_PROVIDER must be either "gemini" or "ollama"',
+    );
+  }
+  return provider;
+}
+
+function readPositiveInteger(name: string, defaultValue: number): number {
+  const value = Number(process.env[name] ?? defaultValue);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function readGeminiModel(): string {
+  const model = (
+    process.env['GEMINI_EMBEDDING_MODEL'] ?? 'gemini-embedding-2'
+  ).replace(/^models\//, '');
+  if (!/^[a-zA-Z0-9._-]+$/.test(model)) {
+    throw new Error('GEMINI_EMBEDDING_MODEL contains invalid characters');
+  }
+  return model;
+}
+
+function buildIndexName(value: string): string {
+  const safe = value.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+  if (safe.length <= 63) return safe;
+  const hash = createHash('sha256').update(safe).digest('hex').slice(0, 8);
+  return `${safe.slice(0, 54)}_${hash}`;
+}
 
 // Nomic accepts at most 512 tokens. Character-based chunking cannot count
 // tokens exactly across English and Arabic, so keep generous headroom.
@@ -112,18 +158,57 @@ async function ensureIndex(): Promise<void> {
 
 type EmbeddingPurpose = 'document' | 'query';
 
-function prepareEmbeddingInput(
-  value: string,
+interface EmbeddingInput {
+  text: string;
+  title?: string;
+}
+
+function prepareOllamaEmbeddingInput(
+  input: EmbeddingInput,
   purpose: EmbeddingPurpose,
 ): string {
+  const value = input.title ? `${input.title}\n\n${input.text}` : input.text;
   if (embeddingModel.startsWith('nomic-embed-text')) {
     return `${purpose === 'document' ? 'search_document' : 'search_query'}: ${value}`;
   }
   return value;
 }
 
-async function embed(
-  values: string[],
+function prepareGeminiEmbeddingInput(
+  input: EmbeddingInput,
+  purpose: EmbeddingPurpose,
+): string {
+  if (embeddingModel === 'gemini-embedding-001') {
+    return input.title ? `${input.title}\n\n${input.text}` : input.text;
+  }
+  if (purpose === 'query') {
+    return `task: search result | query: ${input.text}`;
+  }
+  return `title: ${input.title?.trim() || 'none'} | text: ${input.text}`;
+}
+
+function validateEmbeddings(
+  embeddings: number[][],
+  expectedCount: number,
+  providerName: string,
+): number[][] {
+  if (
+    embeddings.length !== expectedCount ||
+    embeddings.some(
+      (item) =>
+        item.length !== embeddingDimensions ||
+        item.some((value) => !Number.isFinite(value)),
+    )
+  ) {
+    throw new Error(
+      `${providerName} returned embeddings that do not match the configured ${embeddingDimensions} dimensions`,
+    );
+  }
+  return embeddings;
+}
+
+async function embedWithOllama(
+  inputs: EmbeddingInput[],
   purpose: EmbeddingPurpose,
 ): Promise<number[][]> {
   const response = await fetch(`${ollamaBaseUrl}/api/embed`, {
@@ -131,7 +216,9 @@ async function embed(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: embeddingModel,
-      input: values.map((value) => prepareEmbeddingInput(value, purpose)),
+      input: inputs.map((input) =>
+        prepareOllamaEmbeddingInput(input, purpose),
+      ),
       truncate: false,
     }),
     signal: AbortSignal.timeout(30_000),
@@ -140,16 +227,89 @@ async function embed(
     throw new Error(`Ollama embedding API returned HTTP ${response.status}`);
   }
   const body = (await response.json()) as { embeddings?: number[][] };
-  const embeddings = body.embeddings ?? [];
-  if (
-    embeddings.length !== values.length ||
-    embeddings.some((item) => item.length !== embeddingDimensions)
-  ) {
+  return validateEmbeddings(body.embeddings ?? [], inputs.length, 'Ollama');
+}
+
+async function embedGeminiBatch(
+  inputs: EmbeddingInput[],
+  purpose: EmbeddingPurpose,
+  apiKey: string,
+): Promise<number[][]> {
+  const requests = inputs.map((input) => ({
+    model: `models/${embeddingModel}`,
+    content: {
+      parts: [{ text: prepareGeminiEmbeddingInput(input, purpose) }],
+    },
+    embedContentConfig: {
+      outputDimensionality: embeddingDimensions,
+      ...(embeddingModel === 'gemini-embedding-001'
+        ? {
+            taskType:
+              purpose === 'document'
+                ? 'RETRIEVAL_DOCUMENT'
+                : 'RETRIEVAL_QUERY',
+          }
+        : {}),
+    },
+  }));
+  const response = await fetch(
+    `${geminiBaseUrl}/models/${embeddingModel}:batchEmbedContents`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({ requests }),
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Gemini embedding API returned HTTP ${response.status}`);
+  }
+  const responseBody = (await response.json()) as {
+    embeddings?: Array<{ values?: number[] }>;
+  };
+  return (responseBody.embeddings ?? []).map(
+    (embedding) => embedding.values ?? [],
+  );
+}
+
+async function embedWithGemini(
+  inputs: EmbeddingInput[],
+  purpose: EmbeddingPurpose,
+): Promise<number[][]> {
+  const apiKey =
+    process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'];
+  if (!apiKey) {
     throw new Error(
-      `Ollama returned embeddings that do not match the configured ${embeddingDimensions} dimensions`,
+      'GEMINI_API_KEY or GOOGLE_API_KEY is required when RAG_EMBEDDING_PROVIDER=gemini',
     );
   }
-  return embeddings;
+  const batchSize = Math.min(
+    readPositiveInteger('GEMINI_EMBEDDING_BATCH_SIZE', 50),
+    100,
+  );
+  const embeddings: number[][] = [];
+  for (let start = 0; start < inputs.length; start += batchSize) {
+    embeddings.push(
+      ...(await embedGeminiBatch(
+        inputs.slice(start, start + batchSize),
+        purpose,
+        apiKey,
+      )),
+    );
+  }
+  return validateEmbeddings(embeddings, inputs.length, 'Gemini');
+}
+
+async function embed(
+  inputs: EmbeddingInput[],
+  purpose: EmbeddingPurpose,
+): Promise<number[][]> {
+  return embeddingProvider === 'gemini'
+    ? embedWithGemini(inputs, purpose)
+    : embedWithOllama(inputs, purpose);
 }
 
 function chunk(text: string): string[] {
@@ -199,6 +359,7 @@ export async function indexProjectKnowledge(
   input: IndexSourceInput,
 ): Promise<{
   chunkCount: number;
+  embeddingProvider: RagEmbeddingProvider;
   embeddingModel: string;
   indexVersion: string;
 }> {
@@ -227,10 +388,15 @@ export async function indexProjectKnowledge(
     })),
   );
   if (chunks.length === 0) {
-    return { chunkCount: 0, embeddingModel, indexVersion };
+    return {
+      chunkCount: 0,
+      embeddingProvider,
+      embeddingModel,
+      indexVersion,
+    };
   }
   const embeddings = await embed(
-    chunks.map((item) => `${item.title}\n\n${item.text}`),
+    chunks.map((item) => ({ title: item.title, text: item.text })),
     'document',
   );
   const ids = chunks.map((item) =>
@@ -252,11 +418,17 @@ export async function indexProjectKnowledge(
       url: item.url,
       text: item.text,
       chunkIndex: item.chunkIndex,
+      embeddingProvider,
       embeddingModel,
       indexVersion,
     })),
   });
-  return { chunkCount: chunks.length, embeddingModel, indexVersion };
+  return {
+    chunkCount: chunks.length,
+    embeddingProvider,
+    embeddingModel,
+    indexVersion,
+  };
 }
 
 export async function deleteProjectKnowledge(sourceId: string): Promise<void> {
@@ -279,7 +451,7 @@ export async function retrieveProjectKnowledge(
   }
   try {
     await ensureIndex();
-    const [queryVector] = await embed([query], 'query');
+    const [queryVector] = await embed([{ text: query }], 'query');
     if (!queryVector) return [];
     const search = (minScore: number) =>
       getVector().query({

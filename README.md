@@ -408,6 +408,33 @@ To use a different model per agent, edit `src/lib/model.ts` and accept an
 override inside each `buildXxxAgent` factory — they already accept a
 `model: string` parameter.
 
+### Project knowledge embeddings
+
+Project knowledge RAG uses Gemini embeddings by default while retaining
+Ollama as a local option. Configure one provider, then refresh indexed sources
+when changing the provider, model, dimensions, or index version. Each
+configuration uses a separate pgvector index so embeddings from incompatible
+models are never mixed.
+
+```bash
+# Gemini (default)
+RAG_EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=your-api-key
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+RAG_EMBEDDING_DIMENSIONS=768
+
+# Local Ollama alternative
+RAG_EMBEDDING_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text-v2-moe
+RAG_EMBEDDING_DIMENSIONS=768
+```
+
+`GEMINI_EMBEDDING_BATCH_SIZE` controls the number of chunks per synchronous
+Gemini request and defaults to `50` (maximum `100`). The Gemini API key is only
+required when the selected provider is `gemini`; `GOOGLE_API_KEY` is also
+accepted when the same Google AI Studio key is already configured for agents.
+
 ---
 
 ## Scripts
