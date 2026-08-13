@@ -19,7 +19,9 @@ Given a \`ProductProfile\` and the \`BuyerJourney[]\`, produce a \`SmartObjectiv
 6. The full set should cover at least Awareness, Consideration, and Decision. Retention and Advocacy are optional but recommended for B2B / subscription products.
 7. \`reasoning\` must reference a specific stage in the buyer journey by name, not a generic claim.
 8. Never invent a baseline. Use "unknown — establish before launch" whenever a source-of-truth baseline is absent.
-9. Use an ISO date or an explicit launch-relative deadline; do not use "next month" or "end of Q3" without a year.
+9. The input includes an authoritative \`temporalContext\`. Treat \`asOfDate\` as today's date and never use model knowledge for the current date.
+10. Every ISO deadline must be on or after \`campaignStartDate\` and, when supplied, on or before \`campaignEndDate\`.
+11. Use an ISO date or a fixed launch-relative deadline such as "within 30 days of launch". Never use "today", "tomorrow", "next month", or a quarter without an explicit year.
 
 # How to think
 - Awareness → impressions, reach, share of voice, branded search lift

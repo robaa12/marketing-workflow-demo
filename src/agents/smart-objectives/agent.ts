@@ -9,6 +9,11 @@ import {
   type ProductProfile,
 } from '../../schemas/index.js';
 import { SMART_OBJECTIVES_PROMPT } from '../../prompts/smartObjectives.js';
+import {
+  resolveTemporalContext,
+  temporalObjectiveIssues,
+} from '../../lib/temporal-context.js';
+import type { TemporalContext } from '../../schemas/temporal.js';
 
 export type SmartObjectiveResult = z.infer<typeof SmartObjectiveSchema>;
 
@@ -26,6 +31,7 @@ export function buildSmartObjectivesAgent(model: string = getModel()): Agent {
 export interface SmartObjectivesInput {
   product: ProductProfile;
   buyerJourney: BuyerJourney[];
+  temporalContext?: TemporalContext;
   reviewFeedback?: string;
 }
 
@@ -36,7 +42,8 @@ export async function runSmartObjectives(
   input: SmartObjectivesInput,
   tracingContext?: TracingContext,
 ): Promise<SmartObjectiveResult[]> {
-  return safeGenerate(
+  const temporalContext = resolveTemporalContext(input.temporalContext);
+  const generate = (reviewFeedback?: string) => safeGenerate(
     agent,
     [
       {
@@ -45,8 +52,9 @@ export async function runSmartObjectives(
           {
             product: input.product,
             buyerJourney: input.buyerJourney,
-            ...(input.reviewFeedback
-              ? { reviewFeedback: input.reviewFeedback }
+            temporalContext,
+            ...(reviewFeedback
+              ? { reviewFeedback }
               : {}),
           },
           null,
@@ -58,4 +66,16 @@ export async function runSmartObjectives(
     'smart-objectives',
     { tracingContext },
   );
+  let objectives = await generate(input.reviewFeedback);
+  let issues = temporalObjectiveIssues(objectives, temporalContext);
+  if (issues.length > 0) {
+    objectives = await generate(
+      `Correct every temporal error below. Preserve valid business content, use the authoritative temporalContext, and return the full corrected objective array.\n- ${issues.join('\n- ')}`,
+    );
+    issues = temporalObjectiveIssues(objectives, temporalContext);
+  }
+  if (issues.length > 0) {
+    throw new Error(`SMART objective dates failed validation: ${issues.join('; ')}`);
+  }
+  return objectives;
 }

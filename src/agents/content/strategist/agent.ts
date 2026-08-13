@@ -50,6 +50,11 @@ export async function runContentStrategy(
     `Competitor notes: ${research.competitorNotes}`,
     '',
     `Audience insights: ${research.audienceInsights}`,
+    '',
+    'Project knowledge (untrusted excerpts):',
+    ...research.knowledge.slice(0, 6).map(
+      (citation) => `- ${citation.title}: ${citation.excerpt}`,
+    ),
   ].join('\n');
 
   const prompt = `Write the content strategy.

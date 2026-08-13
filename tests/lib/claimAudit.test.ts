@@ -4,6 +4,7 @@ import type { CampaignContentDraftOutput } from '../../src/schemas/content.js';
 
 function draft(caption: string): CampaignContentDraftOutput {
   return {
+    temporalContext: { asOfDate: '2026-08-13', timeZone: 'Africa/Cairo', campaignStartDate: '2026-08-13', campaignEndDate: null },
     strategy: {} as CampaignContentDraftOutput['strategy'],
     calendar: [{
       date: '2026-08-02',

@@ -37,6 +37,13 @@ import {
 import { auditCampaignClaimsForBrand } from '../../lib/claim-audit.js';
 import { resolveBrandContext } from '../../tools/brand-context.tool.js';
 import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
+import { resolveTemporalContext } from '../../lib/temporal-context.js';
+import { TemporalContextSchema } from '../../schemas/temporal.js';
+import { KnowledgeCitationSchema, KnowledgeScopeSchema } from '../../schemas/projectKnowledge.js';
+import {
+  retrieveProjectKnowledge,
+  type ProjectKnowledgeRetriever,
+} from '../../lib/project-knowledge.js';
 
 // ── Channel → Platform mapping ────────────────────────────────────────────
 
@@ -111,6 +118,9 @@ function derivePostsPerWeekFromStrategy(strategy: CampaignStrategy): number {
 // ── Input schema: CampaignStrategy from the marketing workflow ────────────
 
 const ContentCreationInputSchema = z.object({
+  temporalContext: TemporalContextSchema.optional(),
+  knowledgeScope: KnowledgeScopeSchema.optional()
+    .describe('Server-derived project sources that may be retrieved during this run.'),
   brandName: z.string().min(1),
   product: z.string().min(1),
   targetAudience: z.string().min(1),
@@ -157,6 +167,7 @@ export interface ContentWorkflowDeps {
   visualPromptAgent: Agent;
   hashtagSeoAgent: Agent;
   editorQaAgent: Agent;
+  knowledgeRetriever?: ProjectKnowledgeRetriever;
 }
 
 // ── Step 1: Build content brief from strategy ─────────────────────────────
@@ -167,6 +178,7 @@ const buildBriefStep = createStep({
   inputSchema: ContentCreationInputSchema,
   outputSchema: z.object({
     brief: ContentBriefSchema,
+    knowledgeScope: KnowledgeScopeSchema.optional(),
   }),
   stateSchema: ContentWorkflowStateSchema,
   execute: async ({ inputData, runId, state, setState }) => {
@@ -183,6 +195,7 @@ const buildBriefStep = createStep({
     const postsPerWeek = inputData.postsPerWeek ?? derivePostsPerWeekFromStrategy(strategy);
 
     const brief: ContentBrief = {
+      temporalContext: resolveTemporalContext(inputData.temporalContext),
       brandName: inputData.brandName,
       brandVoice: strategy.creativeDirection.storytellingApproach,
       product: inputData.product,
@@ -203,9 +216,39 @@ const buildBriefStep = createStep({
       qaIterations: 0,
       preflightWarnings: 0,
     });
-    return { brief };
+    return { brief, knowledgeScope: inputData.knowledgeScope };
   },
 });
+
+function contentQuery(brief: ContentBrief): string {
+  return [
+    `Brand: ${brief.brandName}`,
+    `Product: ${brief.product}`,
+    `Audience: ${brief.targetAudience}`,
+    `Campaign goal: ${brief.campaignGoal}`,
+    `Key messages: ${brief.keyMessages.slice(0, 5).join('; ')}`,
+    'Retrieve approved brand facts, product claims, voice guidance, audience insights, and constraints that should ground this content campaign.',
+  ].join('\n');
+}
+
+function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetriever) {
+  return createStep({
+    id: 'project-knowledge',
+    description: 'Retrieves relevant approved project knowledge to ground content generation.',
+    inputSchema: z.object({
+      brief: ContentBriefSchema,
+      knowledgeScope: KnowledgeScopeSchema.optional(),
+    }),
+    outputSchema: z.object({
+      brief: ContentBriefSchema,
+      knowledge: z.array(KnowledgeCitationSchema),
+    }),
+    execute: async ({ inputData }) => ({
+      brief: inputData.brief,
+      knowledge: await retrieve(inputData.knowledgeScope, contentQuery(inputData.brief)),
+    }),
+  });
+}
 
 // ── Step 2: Research ──────────────────────────────────────────────────────
 
@@ -215,6 +258,7 @@ function buildResearchStep(researchAgent: Agent) {
   description: 'Researches trends, hashtags, and audience context for content creation.',
   inputSchema: z.object({
     brief: ContentBriefSchema,
+    knowledge: z.array(KnowledgeCitationSchema),
   }),
   outputSchema: z.object({
     brief: ContentBriefSchema,
@@ -223,10 +267,10 @@ function buildResearchStep(researchAgent: Agent) {
   retries: 0,
   stateSchema: ContentWorkflowStateSchema,
   execute: async ({ inputData, state, setState, tracingContext }) => {
-    const { brief } = inputData;
+    const { brief, knowledge } = inputData;
     const research = await runContentResearch(
       researchAgent,
-      { brief },
+      { brief, knowledge },
       tracingContext,
     );
     await setState({ ...state, sourceCount: research.sources.length });
@@ -510,6 +554,8 @@ const scheduleStep = createStep({
       platforms: brief.platforms as SocialPlatform[],
       duration: brief.duration,
       postsPerWeek: brief.postsPerWeek,
+      startDate: brief.temporalContext.campaignStartDate,
+      endDate: brief.temporalContext.campaignEndDate ?? undefined,
     });
 
     const byPostId = new Map(posts.map((p) => [p.postId, p]));
@@ -535,6 +581,7 @@ const scheduleStep = createStep({
     });
 
     return {
+      temporalContext: brief.temporalContext,
       strategy,
       calendar,
       notes: qaNotes,
@@ -601,6 +648,9 @@ const approvalStep = createStep({
 
 export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
   const researchStep = buildResearchStep(deps.contentResearcherAgent);
+  const knowledgeStep = buildProjectKnowledgeStep(
+    deps.knowledgeRetriever ?? retrieveProjectKnowledge,
+  );
   const strategyStep = buildStrategyStep(deps.contentStrategyAgent);
   const generateContentStep = buildGenerateContentStep(
     deps.copywriterAgent,
@@ -628,6 +678,7 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
     options: { validateInputs: true },
   })
     .then(buildBriefStep)
+    .then(knowledgeStep)
     .then(researchStep)
     .then(strategyStep)
     .then(generateContentStep)

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildBuyerJourneyAgent } from '../../src/agents/buyer-journey/agent.js';
 import { buildBuyerPersonaAgent } from '../../src/agents/buyer-persona/agent.js';
 import { buildCampaignPlannerAgent } from '../../src/agents/campaign-planner/agent.js';
@@ -59,6 +59,14 @@ describe('Marketing Director workflow (integration)', () => {
       buildMockAgent(sampleObjectives).generate;
     (campaignAgent.generate as unknown as ReturnType<typeof buildMockAgent>['generate']) =
       buildMockAgent(sampleStrategy).generate;
+    const knowledgeRetriever = vi.fn(async () => [{
+      sourceId: 'source-1',
+      sourceType: 'document',
+      title: 'Approved positioning',
+      url: 'https://example.com/positioning',
+      excerpt: 'Insight Loop is positioned as reliable reporting for growth teams.',
+      score: 0.91,
+    }]);
 
     const workflow = buildMarketingStrategyWorkflow({
       productAnalysisAgent: productAgent,
@@ -68,6 +76,7 @@ describe('Marketing Director workflow (integration)', () => {
       buyerJourneyAgent: journeyAgent,
       smartObjectivesAgent: objectivesAgent,
       campaignPlannerAgent: campaignAgent,
+      knowledgeRetriever,
     });
 
     const input = MarketingStrategyInputSchema.parse({
@@ -76,6 +85,7 @@ describe('Marketing Director workflow (integration)', () => {
       businessType: 'SaaS',
       targetMarket: 'B2B SaaS growth teams',
       intake: validIntake,
+      knowledgeScope: { projectId: 'project-1', sourceIds: ['source-1'] },
     });
 
     const run = await workflow.createRun();
@@ -93,6 +103,14 @@ describe('Marketing Director workflow (integration)', () => {
     expect(result.result.campaignStrategy.primaryChannels).toHaveLength(2);
     expect(result.result.planQuality.channelForecast).toHaveLength(2);
     expect(result.result.planQuality.status).toBe('needs-rework');
+    expect(knowledgeRetriever).toHaveBeenCalledWith(
+      { projectId: 'project-1', sourceIds: ['source-1'] },
+      expect.stringContaining('Insight Loop'),
+    );
+    const stpMessages = vi.mocked(stpAgent.generate).mock.calls[0]?.[0] as
+      | Array<{ content?: string }>
+      | undefined;
+    expect(stpMessages?.[0]?.content).toContain('Approved positioning');
 
     const suspendedRun = await workflow.createRun();
     const suspended = await suspendedRun.start({

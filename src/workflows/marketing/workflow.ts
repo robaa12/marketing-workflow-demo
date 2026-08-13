@@ -5,6 +5,7 @@ import {
   buildBuyerPersonaStep,
   buildCampaignPlannerStep,
   buildProductAnalysisStep,
+  buildProjectKnowledgeStep,
   buildSmartObjectivesStep,
   buildSTPStrategyStep,
   buildSTPResearchStep,
@@ -17,6 +18,10 @@ import {
 } from '../../schemas/index.js';
 import { MarketingWorkflowError } from '../../lib/errors.js';
 import type { STPResearchRunner } from '../../lib/stp-research.js';
+import {
+  retrieveProjectKnowledge,
+  type ProjectKnowledgeRetriever,
+} from '../../lib/project-knowledge.js';
 
 /**
  * Dependency bag for the workflow. Each agent is built and passed in so the
@@ -30,6 +35,7 @@ export interface MarketingWorkflowDeps {
   buyerJourneyAgent: Agent;
   smartObjectivesAgent: Agent;
   campaignPlannerAgent: Agent;
+  knowledgeRetriever?: ProjectKnowledgeRetriever;
 }
 
 /**
@@ -46,6 +52,9 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
   );
   const stpStep = buildSTPStrategyStep(deps.stpStrategyAgent);
   const stpResearchStep = buildSTPResearchStep(deps.stpResearcher);
+  const knowledgeStep = buildProjectKnowledgeStep(
+    deps.knowledgeRetriever ?? retrieveProjectKnowledge,
+  );
   const personaStep = buildBuyerPersonaStep(deps.buyerPersonaAgent);
   const journeyStep = buildBuyerJourneyStep(deps.buyerJourneyAgent);
   const objectivesStep = buildSmartObjectivesStep(deps.smartObjectivesAgent);
@@ -86,6 +95,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
   })
     .then(intakeGateStep)
     .then(productAnalysisStep)
+    .then(knowledgeStep)
     .then(stpResearchStep)
     .then(stpStep)
     .then(personaStep)

@@ -6,6 +6,8 @@ import { BuyerPersonaSchema } from './persona.js';
 import { ProductProfileSchema, UserProductInputSchema } from './product.js';
 import { STPResultSchema } from './stp.js';
 import { MarketingPlanQualitySchema } from './planQuality.js';
+import { TemporalContextSchema } from './temporal.js';
+import { KnowledgeScopeSchema } from './projectKnowledge.js';
 
 /**
  * Single source of truth for the marketing strategy workflow.
@@ -31,6 +33,9 @@ export type MarketingStrategyContext = z.infer<typeof MarketingStrategyContextSc
  * The orchestrator derives the initial `MarketingStrategyContext` from this.
  */
 export const MarketingStrategyInputSchema = UserProductInputSchema.extend({
+  temporalContext: TemporalContextSchema.optional(),
+  knowledgeScope: KnowledgeScopeSchema.optional()
+    .describe('Server-derived project sources that may be retrieved during this run.'),
   options: z
     .object({
       maxPersonas: z.number().int().min(1).max(3).default(3),
@@ -47,6 +52,7 @@ export type MarketingStrategyInput = z.infer<typeof MarketingStrategyInputSchema
  * Final, terminal shape returned by the workflow.
  */
 export const MarketingStrategyOutputSchema = z.object({
+  temporalContext: TemporalContextSchema.optional(),
   product: ProductProfileSchema,
   stp: STPResultSchema,
   personas: z.array(BuyerPersonaSchema).min(1).max(3),

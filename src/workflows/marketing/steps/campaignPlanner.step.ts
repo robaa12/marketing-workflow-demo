@@ -9,8 +9,11 @@ import {
   ProductProfileSchema,
   SmartObjectiveSchema,
   STPResultSchema,
+  TemporalContextSchema,
+  type MarketingStrategyInput,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
+import { resolveTemporalContext } from '../../../lib/temporal-context.js';
 
 /**
  * Step 6 — Campaign Planner.
@@ -36,6 +39,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     outputSchema: z.object({
+      temporalContext: TemporalContextSchema,
       product: ProductProfileSchema,
       stp: STPResultSchema,
       personas: z.array(BuyerPersonaSchema).min(1).max(3),
@@ -43,7 +47,10 @@ export function buildCampaignPlannerStep(agent: Agent) {
       smartObjectives: z.array(SmartObjectiveSchema).min(1),
       campaignStrategy: CampaignStrategySchema,
     }),
-    execute: async ({ inputData, tracingContext }) => {
+    execute: async ({ inputData, tracingContext, getInitData }) => {
+      const temporalContext = resolveTemporalContext(
+        getInitData<MarketingStrategyInput>().temporalContext,
+      );
       const campaignStrategy = await runCampaignPlanner(agent, {
         product: inputData.product,
         stp: inputData.stp,
@@ -56,8 +63,10 @@ export function buildCampaignPlannerStep(agent: Agent) {
           | 'conversion'
           | 'retention'
           | 'balanced',
+        temporalContext,
       }, tracingContext);
       return {
+        temporalContext,
         product: inputData.product,
         stp: inputData.stp,
         personas: inputData.personas,

@@ -6,6 +6,11 @@ import {
   type SocialPlatform,
   type Post,
 } from '../schemas/content.js';
+import {
+  addCalendarDays,
+  calendarDaysBetween,
+  resolveTemporalContext,
+} from '../lib/temporal-context.js';
 
 export interface ParseResult {
   weeks: number;
@@ -30,13 +35,17 @@ export interface CalendarInput {
   duration: string;
   postsPerWeek: number;
   startDate?: string;
+  endDate?: string;
 }
 
 export function buildCalendar(input: CalendarInput): {
   schedule: Array<{ date: string; postId: string; platform: SocialPlatform }>;
 } {
-  const startRaw = input.startDate;
-  const startDate = startRaw ? new Date(startRaw) : new Date();
+  const fallback = resolveTemporalContext(undefined);
+  const startDate = input.startDate ?? fallback.campaignStartDate;
+  if (input.endDate && input.endDate < startDate) {
+    throw new Error('Calendar endDate must not be before startDate');
+  }
   const { weeks } = parseDuration(input.duration);
   const totalSlots = Math.max(1, input.postsPerWeek) * weeks;
 
@@ -47,8 +56,10 @@ export function buildCalendar(input: CalendarInput): {
     byPlatform.get(p.platform)!.push(p);
   }
 
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const totalDays = weeks * 7;
+  const requestedDays = weeks * 7;
+  const totalDays = input.endDate
+    ? Math.min(requestedDays, calendarDaysBetween(startDate, input.endDate) + 1)
+    : requestedDays;
 
   for (const platform of input.platforms) {
     const platformPosts = byPlatform.get(platform) ?? [];
@@ -60,9 +71,8 @@ export function buildCalendar(input: CalendarInput): {
       const slotsAhead = slotCount;
       const fraction = slotsAhead <= 1 ? 0 : slotIndex / (slotsAhead - 1 || 1);
       const dayOffset = Math.min(Math.round(fraction * (totalDays - 1)), totalDays - 1);
-      const date = new Date(startDate.getTime() + dayOffset * MS_PER_DAY);
       schedule.push({
-        date: date.toISOString().slice(0, 10),
+        date: addCalendarDays(startDate, dayOffset),
         postId: post.postId,
         platform,
       });
@@ -83,6 +93,7 @@ export const contentCalendarTool = createTool({
     duration: z.string(),
     postsPerWeek: z.number(),
     startDate: z.string().optional().describe('ISO date to start from; defaults to today.'),
+    endDate: z.string().optional().describe('Optional inclusive ISO campaign end date.'),
   }),
   outputSchema: z.object({
     schedule: z.array(
@@ -100,6 +111,7 @@ export const contentCalendarTool = createTool({
       duration: inputData.duration,
       postsPerWeek: inputData.postsPerWeek,
       startDate: inputData.startDate,
+      endDate: inputData.endDate,
     });
   },
 });

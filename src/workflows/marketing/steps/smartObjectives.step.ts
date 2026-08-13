@@ -8,8 +8,10 @@ import {
   ProductProfileSchema,
   SmartObjectiveSchema,
   STPResultSchema,
+  type MarketingStrategyInput,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
+import { resolveTemporalContext } from '../../../lib/temporal-context.js';
 
 /**
  * Step 5 — SMART Objectives.
@@ -36,10 +38,14 @@ export function buildSmartObjectivesStep(agent: Agent) {
       smartObjectives: z.array(SmartObjectiveSchema).min(1),
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
-    execute: async ({ inputData, tracingContext }) => {
+    execute: async ({ inputData, tracingContext, getInitData }) => {
+      const temporalContext = resolveTemporalContext(
+        getInitData<MarketingStrategyInput>().temporalContext,
+      );
       const smartObjectives = await runSmartObjectives(agent, {
         product: inputData.product,
         buyerJourney: inputData.buyerJourney,
+        temporalContext,
       }, tracingContext);
       return {
         product: inputData.product,

@@ -12,6 +12,8 @@ import {
   type STPResult,
 } from '../../schemas/index.js';
 import { CAMPAIGN_PLANNER_PROMPT } from '../../prompts/campaignPlanner.js';
+import type { TemporalContext } from '../../schemas/temporal.js';
+import { temporalValueIssues } from '../../lib/temporal-context.js';
 
 export type CampaignStrategyResult = CampaignStrategy;
 export type PrimaryGoal =
@@ -39,6 +41,7 @@ export interface CampaignPlannerInput {
   buyerJourney: BuyerJourney[];
   smartObjectives: SmartObjective[];
   options: PrimaryGoal;
+  temporalContext?: TemporalContext;
 }
 
 /**
@@ -57,18 +60,53 @@ export async function runCampaignPlanner(
     buyerJourney: input.buyerJourney,
     smartObjectives: input.smartObjectives,
     options: { primaryGoal: input.options },
+    ...(input.temporalContext
+      ? { temporalContext: input.temporalContext }
+      : {}),
   };
 
-  return safeGenerate(
+  const messages = [
+    {
+      role: 'user' as const,
+      content: JSON.stringify(contextForAgent, null, 2),
+    },
+  ];
+  let result = await safeGenerate(
     agent,
-    [
-      {
-        role: 'user',
-        content: JSON.stringify(contextForAgent, null, 2),
-      },
-    ],
+    messages,
     CampaignStrategySchema,
     'campaign-planner',
     { tracingContext },
   );
+
+  if (!input.temporalContext) return result;
+  let dateIssues = temporalValueIssues(
+    result,
+    input.temporalContext,
+    'campaignStrategy',
+  );
+  if (dateIssues.length === 0) return result;
+
+  result = await safeGenerate(
+    agent,
+    [
+      ...messages,
+      {
+        role: 'user',
+        content: `Your previous campaign strategy contained invalid dates:\n- ${dateIssues.join('\n- ')}\nRegenerate the complete strategy. Preserve sound content, but replace every invalid date with an ISO date inside the authoritative campaign window or a fixed launch-relative duration.`,
+      },
+    ],
+    CampaignStrategySchema,
+    'campaign-planner-date-repair',
+    { tracingContext },
+  );
+  dateIssues = temporalValueIssues(
+    result,
+    input.temporalContext,
+    'campaignStrategy',
+  );
+  if (dateIssues.length > 0) {
+    throw new Error(`Campaign strategy dates failed validation: ${dateIssues.join('; ')}`);
+  }
+  return result;
 }

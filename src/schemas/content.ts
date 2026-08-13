@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { MarketingChannelEnum } from './common.js';
+import { IsoCalendarDateSchema, TemporalContextSchema } from './temporal.js';
+import { KnowledgeCitationSchema } from './projectKnowledge.js';
 
 // ── Platform enum (social-specific, maps to MarketingChannelEnum) ──────────
 
@@ -16,6 +18,7 @@ export type SocialPlatform = z.infer<typeof SocialPlatformEnum>;
 // ── Campaign brief for content creation ────────────────────────────────────
 
 export const ContentBriefSchema = z.object({
+  temporalContext: TemporalContextSchema,
   brandName: z.string().min(1),
   brandVoice: z.string().min(1).describe('e.g. "witty, confident, minimal"'),
   product: z.string().min(1),
@@ -66,6 +69,8 @@ export const ResearchOutputSchema = z.object({
     .describe('Specific content angles per platform, tied to trends and audience insights'),
   competitorNotes: z.string(),
   audienceInsights: z.string(),
+  knowledge: z.array(KnowledgeCitationSchema).default([])
+    .describe('Retrieved project knowledge excerpts available to downstream content agents.'),
 });
 export type ResearchOutput = z.infer<typeof ResearchOutputSchema>;
 
@@ -165,7 +170,7 @@ export type ContentBundle = z.infer<typeof ContentBundleSchema>;
 // ── Calendar entry (final output) ──────────────────────────────────────────
 
 export const CalendarEntrySchema = z.object({
-  date: z.string().describe('ISO date (YYYY-MM-DD)'),
+  date: IsoCalendarDateSchema.describe('ISO date (YYYY-MM-DD)'),
   platform: SocialPlatformEnum,
   caption: z.string(),
   hashtags: z.array(z.string()),
@@ -178,6 +183,7 @@ export type CalendarEntry = z.infer<typeof CalendarEntrySchema>;
 // ── Final campaign content output ──────────────────────────────────────────
 
 export const CampaignContentDraftOutputSchema = z.object({
+  temporalContext: TemporalContextSchema,
   strategy: ContentStrategySchema,
   calendar: z.array(CalendarEntrySchema),
   notes: z.array(QANoteSchema),

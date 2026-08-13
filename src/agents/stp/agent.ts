@@ -6,6 +6,7 @@ import { safeGenerate } from '../../lib/safeGenerate.js';
 import {
   STPResultSchema,
   type ProductProfile,
+  type KnowledgeCitation,
   type STPResearch,
 } from '../../schemas/index.js';
 import { STP_STRATEGY_PROMPT } from '../../prompts/stpStrategy.js';
@@ -28,6 +29,7 @@ export async function runSTPStrategy(
   product: ProductProfile,
   research?: STPResearch,
   tracingContext?: TracingContext,
+  knowledge: KnowledgeCitation[] = [],
 ): Promise<STPStrategyResult> {
   const compactProduct = {
     name: product.name,
@@ -58,13 +60,23 @@ export async function runSTPStrategy(
     })),
     warnings: research.warnings.slice(0, 3),
   };
+  const compactKnowledge = knowledge.slice(0, 6).map((citation) => ({
+    title: citation.title,
+    sourceType: citation.sourceType,
+    url: citation.url,
+    excerpt: citation.excerpt,
+  }));
 
   return safeGenerate(
     agent,
     [
       {
         role: 'user',
-        content: JSON.stringify({ product: compactProduct, research: compactResearch }),
+        content: JSON.stringify({
+          product: compactProduct,
+          research: compactResearch,
+          projectKnowledge: compactKnowledge,
+        }),
       },
     ],
     STPResultSchema,

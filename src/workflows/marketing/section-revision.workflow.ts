@@ -5,6 +5,8 @@ import { runBuyerJourney } from '../../agents/buyer-journey/agent.js';
 import { runBuyerPersona } from '../../agents/buyer-persona/agent.js';
 import { runSmartObjectives } from '../../agents/smart-objectives/agent.js';
 import { MarketingStrategyOutputSchema } from '../../schemas/marketingContext.js';
+import { TemporalContextSchema } from '../../schemas/temporal.js';
+import { resolveTemporalContext } from '../../lib/temporal-context.js';
 
 const SectionSchema = z.enum([
   'personas',
@@ -16,6 +18,7 @@ export const StrategySectionRevisionInputSchema = z.object({
   strategy: MarketingStrategyOutputSchema,
   section: SectionSchema,
   feedback: z.string().trim().min(3).max(4_000),
+  temporalContext: TemporalContextSchema.optional(),
 });
 
 export interface StrategySectionRevisionDeps {
@@ -35,6 +38,9 @@ export function buildStrategySectionRevisionWorkflow(
     outputSchema: MarketingStrategyOutputSchema,
     execute: async ({ inputData, tracingContext }) => {
       const { strategy, section, feedback } = inputData;
+      const temporalContext = resolveTemporalContext(
+        inputData.temporalContext ?? strategy.temporalContext,
+      );
 
       if (section === 'personas') {
         const personas = await runBuyerPersona(
@@ -48,7 +54,7 @@ export function buildStrategySectionRevisionWorkflow(
           tracingContext,
         );
         return markDependentReview(
-          { ...strategy, personas },
+          { ...strategy, temporalContext, personas },
           section,
           'Review buyer journeys, objectives, and campaign targeting against the revised personas.',
         );
@@ -65,7 +71,7 @@ export function buildStrategySectionRevisionWorkflow(
           tracingContext,
         );
         return markDependentReview(
-          { ...strategy, buyerJourney },
+          { ...strategy, temporalContext, buyerJourney },
           section,
           'Review objectives and campaign messaging against the revised buyer journey.',
         );
@@ -76,12 +82,13 @@ export function buildStrategySectionRevisionWorkflow(
         {
           product: strategy.product,
           buyerJourney: strategy.buyerJourney,
+          temporalContext,
           reviewFeedback: feedback,
         },
         tracingContext,
       );
       return markDependentReview(
-        { ...strategy, smartObjectives },
+        { ...strategy, temporalContext, smartObjectives },
         section,
         'Review campaign KPIs and recommendations against the revised objectives.',
       );

@@ -98,6 +98,12 @@ function buildDeps(overrides: Partial<ContentWorkflowDeps> = {}): ContentWorkflo
 }
 
 const input = {
+  temporalContext: {
+    asOfDate: '2026-08-13',
+    timeZone: 'Africa/Cairo',
+    campaignStartDate: '2026-08-20',
+    campaignEndDate: '2026-08-26',
+  },
   brandName: 'Insight Loop',
   product: 'Automated marketing reporting',
   targetAudience: 'Growth leaders at SaaS companies',
@@ -117,11 +123,42 @@ describe('Content Creation workflow', () => {
     expect(result.result.calendar).toHaveLength(1);
     expect(result.result.claimVerification.unsupportedCount).toBe(0);
     expect(result.result.calendar[0]).toMatchObject({
+      date: '2026-08-20',
       platform: 'linkedin',
       caption: initialPost.caption,
       hashtags: expect.arrayContaining(['#MarketingOps']),
       imageUrl: expect.stringMatching(/^simulated:\/\/image-generation\//),
     });
+  });
+
+  it('retrieves project-scoped knowledge and carries it into content research', async () => {
+    const knowledgeRetriever = vi.fn(async () => [{
+      sourceId: 'source-1',
+      sourceType: 'document',
+      title: 'Approved positioning',
+      url: 'https://example.com/positioning',
+      excerpt: 'Insight Loop gives growth teams reliable reporting without manual spreadsheet work.',
+      score: 0.91,
+    }]);
+    const deps = buildDeps({ knowledgeRetriever });
+    const workflow = buildContentCreationWorkflow(deps);
+
+    const result = await (await workflow.createRun()).start({
+      inputData: {
+        ...input,
+        knowledgeScope: { projectId: 'project-1', sourceIds: ['source-1'] },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(knowledgeRetriever).toHaveBeenCalledWith(
+      { projectId: 'project-1', sourceIds: ['source-1'] },
+      expect.stringContaining('Insight Loop'),
+    );
+    const researcherMessages = vi.mocked(deps.contentResearcherAgent.generate)
+      .mock.calls[0]?.[0] as Array<{ content?: string }> | undefined;
+    expect(researcherMessages?.[0]?.content).toContain('Approved positioning');
+    expect(researcherMessages?.[0]?.content).toContain('manual spreadsheet work');
   });
 
   it('rewrites failed QA output once before scheduling', async () => {

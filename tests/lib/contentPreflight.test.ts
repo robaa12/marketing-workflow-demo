@@ -3,6 +3,7 @@ import { ContentPreflightError, runContentPreflight } from '../../src/lib/conten
 import type { ContentBrief, Post } from '../../src/schemas/content.js';
 
 const brief: ContentBrief = {
+  temporalContext: { asOfDate: '2026-08-13', timeZone: 'Africa/Cairo', campaignStartDate: '2026-08-13', campaignEndDate: null },
   brandName: 'Insight Loop',
   brandVoice: 'Direct',
   product: 'Reporting automation',

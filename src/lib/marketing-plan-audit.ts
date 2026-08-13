@@ -6,7 +6,9 @@ import type {
   SmartObjective,
   STPResearch,
   STPResult,
+  TemporalContext,
 } from '../schemas/index.js';
+import { temporalObjectiveIssues } from './temporal-context.js';
 
 const RISKY_CLAIM = /\b(?:\d+(?:\.\d+)?\s?(?:%|hours?|minutes?|days?)|real[- ]time|guarantee|money[- ]back|GDPR|SOC ?2|Shopify|WooCommerce|Salesforce|HubSpot|Google Analytics|case study)\b/i;
 
@@ -16,6 +18,7 @@ export function auditMarketingPlan(input: {
   smartObjectives: SmartObjective[];
   campaignStrategy: CampaignStrategy;
   research: STPResearch;
+  temporalContext?: TemporalContext;
 }): MarketingPlanQuality {
   const issues: MarketingPlanIssue[] = [];
   const { product, stp, smartObjectives, campaignStrategy, research } = input;
@@ -53,6 +56,22 @@ export function auditMarketingPlan(input: {
     }
     return { objectiveId: objective.id, status, baseline };
   });
+  if (input.temporalContext) {
+    for (const message of temporalObjectiveIssues(
+      smartObjectives,
+      input.temporalContext,
+    )) {
+      issues.push(
+        issue(
+          'error',
+          'invalid-objective-date',
+          'smartObjectives',
+          message,
+          'Regenerate the objective using the authoritative workflow temporal context.',
+        ),
+      );
+    }
+  }
 
   const claims = collectCampaignText(campaignStrategy);
   const verifiedText = product.verifiedFacts.join(' ').toLowerCase();

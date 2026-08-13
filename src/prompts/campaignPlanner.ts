@@ -24,6 +24,7 @@ Given the complete prior context — \`ProductProfile\`, \`STPResult\`, \`BuyerP
 11. Product capabilities, integrations, compliance certifications, guarantees, customer names, and customer outcomes are facts only when supplied in the input. Otherwise phrase them as a test, question, or assumption — never as proof.
 12. When a baseline is not supplied, set \`baseline\` to "unknown — establish before launch". Do not invent traffic, conversion, churn, CAC, or revenue baselines.
 13. Use deadlines that are either ISO dates or a clear launch-relative window (for example, "within 30 days of launch").
+14. The input's \`temporalContext\` is authoritative. Never infer today's date from model knowledge, and never introduce an ISO date outside the campaign start/end bounds.
 
 # How to think
 - Pick the 3-5 channels with the highest expected return given the persona's \`preferredChannels\` and the STP \`targetedSegments\`.

@@ -86,6 +86,8 @@ export async function runQA(
 ${brief.brandName} — voice: ${brief.brandVoice}
 Campaign goal: ${brief.campaignGoal}
 Constraints: ${brief.constraints || 'none'}
+Authoritative date: ${brief.temporalContext.asOfDate} (${brief.temporalContext.timeZone})
+Campaign window: ${brief.temporalContext.campaignStartDate} to ${brief.temporalContext.campaignEndDate ?? 'open-ended'}
 
 == STRATEGY ==
 Core narrative: ${strategy.coreNarrative}
@@ -99,6 +101,9 @@ ${brief.keyMessages.map((m) => `- ${m}`).join('\n') || 'None specified'}
 
 == RESEARCH CITATIONS ==
 ${research.sources.map((source) => `- ${source.title}: ${source.url}`).join('\n')}
+
+== PROJECT KNOWLEDGE ==
+${research.knowledge.slice(0, 4).map((citation) => `- ${citation.title}: ${citation.excerpt}`).join('\n') || 'No matching project knowledge.'}
 
 == PLATFORM-LIMIT CHECK ==
 ${limitViolations || `All ${posts.length} captions passed the deterministic platform-limit check.`}
