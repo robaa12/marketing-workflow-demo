@@ -1,21 +1,13 @@
 import { createHash } from 'node:crypto';
 import { PgVector } from '@mastra/pg';
+import type { KnowledgeCitation, KnowledgeScope } from '../schemas/projectKnowledge.js';
 
-export interface KnowledgeScope {
-  projectId: string;
-  sourceIds: string[];
-}
+export type { KnowledgeCitation, KnowledgeScope } from '../schemas/projectKnowledge.js';
 
-export interface KnowledgeCitation {
-  sourceId: string;
-  pageId?: string;
-  chunkId?: string;
-  sourceType: string;
-  title: string;
-  url?: string;
-  excerpt: string;
-  score: number;
-}
+export type ProjectKnowledgeRetriever = (
+  scope: KnowledgeScope | undefined,
+  query: string,
+) => Promise<KnowledgeCitation[]>;
 
 export interface IndexSourceInput {
   projectId: string;

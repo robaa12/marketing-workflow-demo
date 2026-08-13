@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { runProductAnalysis } from '../../../agents/product-analysis/agent.js';
 import {
   MarketingStrategyInputSchema,
+  KnowledgeScopeSchema,
   ProductProfileSchema,
 } from '../../../schemas/index.js';
 
@@ -27,12 +28,14 @@ export function buildProductAnalysisStep(agent: Agent) {
     outputSchema: z.object({
       product: ProductProfileSchema,
       options: WorkflowOptionsSchema,
+      knowledgeScope: KnowledgeScopeSchema.optional(),
     }),
     execute: async ({ inputData, tracingContext }) => {
       const product = await runProductAnalysis(agent, inputData, tracingContext);
       return {
         product,
         options: inputData.options,
+        knowledgeScope: inputData.knowledgeScope,
       };
     },
   });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { STPResearchRunner } from '../../../lib/stp-research.js';
 import {
   ProductProfileSchema,
+  KnowledgeCitationSchema,
   STPResearchSchema,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
@@ -13,11 +14,13 @@ export function buildSTPResearchStep(research: STPResearchRunner) {
     description: 'Runs two bounded market searches before STP synthesis.',
     inputSchema: z.object({
       product: ProductProfileSchema,
+      knowledge: z.array(KnowledgeCitationSchema),
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     outputSchema: z.object({
       product: ProductProfileSchema,
       stpResearch: STPResearchSchema,
+      knowledge: z.array(KnowledgeCitationSchema),
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     execute: async ({ inputData }) => ({
