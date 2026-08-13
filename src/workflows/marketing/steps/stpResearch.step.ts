@@ -4,6 +4,7 @@ import type { STPResearchRunner } from '../../../lib/stp-research.js';
 import {
   ProductProfileSchema,
   KnowledgeCitationSchema,
+  KnowledgeRetrievalProvenanceSchema,
   STPResearchSchema,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
@@ -15,12 +16,14 @@ export function buildSTPResearchStep(research: STPResearchRunner) {
     inputSchema: z.object({
       product: ProductProfileSchema,
       knowledge: z.array(KnowledgeCitationSchema),
+      knowledgeProvenance: KnowledgeRetrievalProvenanceSchema,
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     outputSchema: z.object({
       product: ProductProfileSchema,
       stpResearch: STPResearchSchema,
       knowledge: z.array(KnowledgeCitationSchema),
+      knowledgeProvenance: KnowledgeRetrievalProvenanceSchema,
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     execute: async ({ inputData }) => ({

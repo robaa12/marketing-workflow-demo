@@ -10,6 +10,7 @@ import {
   SmartObjectiveSchema,
   STPResultSchema,
   TemporalContextSchema,
+  KnowledgeRetrievalProvenanceSchema,
   type MarketingStrategyInput,
 } from '../../../schemas/index.js';
 import { WORKFLOW_OPTIONS_SCHEMA } from './productAnalysis.step.js';
@@ -40,6 +41,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
     }),
     outputSchema: z.object({
       temporalContext: TemporalContextSchema,
+      knowledgeProvenance: KnowledgeRetrievalProvenanceSchema.optional(),
       product: ProductProfileSchema,
       stp: STPResultSchema,
       personas: z.array(BuyerPersonaSchema).min(1).max(3),
@@ -47,7 +49,7 @@ export function buildCampaignPlannerStep(agent: Agent) {
       smartObjectives: z.array(SmartObjectiveSchema).min(1),
       campaignStrategy: CampaignStrategySchema,
     }),
-    execute: async ({ inputData, tracingContext, getInitData }) => {
+    execute: async ({ inputData, tracingContext, getInitData, getStepResult }) => {
       const temporalContext = resolveTemporalContext(
         getInitData<MarketingStrategyInput>().temporalContext,
       );
@@ -65,8 +67,12 @@ export function buildCampaignPlannerStep(agent: Agent) {
           | 'balanced',
         temporalContext,
       }, tracingContext);
+      const knowledgeProvenance = getStepResult<{
+        knowledgeProvenance: z.infer<typeof KnowledgeRetrievalProvenanceSchema>;
+      }>('project-knowledge')?.knowledgeProvenance;
       return {
         temporalContext,
+        ...(knowledgeProvenance ? { knowledgeProvenance } : {}),
         product: inputData.product,
         stp: inputData.stp,
         personas: inputData.personas,

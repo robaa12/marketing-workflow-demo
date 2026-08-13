@@ -19,8 +19,8 @@ import {
 import { MarketingWorkflowError } from '../../lib/errors.js';
 import type { STPResearchRunner } from '../../lib/stp-research.js';
 import {
-  retrieveProjectKnowledge,
-  type ProjectKnowledgeRetriever,
+  retrieveProjectKnowledgeWithStatus,
+  type ProjectKnowledgeRetrievalRunner,
 } from '../../lib/project-knowledge.js';
 
 /**
@@ -35,7 +35,7 @@ export interface MarketingWorkflowDeps {
   buyerJourneyAgent: Agent;
   smartObjectivesAgent: Agent;
   campaignPlannerAgent: Agent;
-  knowledgeRetriever?: ProjectKnowledgeRetriever;
+  knowledgeRetriever?: ProjectKnowledgeRetrievalRunner;
 }
 
 /**
@@ -53,7 +53,7 @@ export function buildMarketingStrategyWorkflow(deps: MarketingWorkflowDeps) {
   const stpStep = buildSTPStrategyStep(deps.stpStrategyAgent);
   const stpResearchStep = buildSTPResearchStep(deps.stpResearcher);
   const knowledgeStep = buildProjectKnowledgeStep(
-    deps.knowledgeRetriever ?? retrieveProjectKnowledge,
+    deps.knowledgeRetriever ?? retrieveProjectKnowledgeWithStatus,
   );
   const personaStep = buildBuyerPersonaStep(deps.buyerPersonaAgent);
   const journeyStep = buildBuyerJourneyStep(deps.buyerJourneyAgent);

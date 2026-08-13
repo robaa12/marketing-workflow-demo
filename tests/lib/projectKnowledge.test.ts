@@ -53,6 +53,22 @@ describe('project knowledge retrieval', () => {
     expect(vector.query).not.toHaveBeenCalled();
   });
 
+  it('records no eligible sources as workflow provenance', async () => {
+    const { retrieveProjectKnowledgeWithStatus } =
+      await import('../../src/lib/project-knowledge.js');
+
+    await expect(
+      retrieveProjectKnowledgeWithStatus(
+        { projectId: scope.projectId, sourceIds: [] },
+        'What is the approved positioning?',
+      ),
+    ).resolves.toMatchObject({
+      status: 'no-sources',
+      sourceIds: [],
+      citations: [],
+    });
+  });
+
   it('filters results by project and the eligible-source allow-list', async () => {
     vi.stubGlobal(
       'fetch',

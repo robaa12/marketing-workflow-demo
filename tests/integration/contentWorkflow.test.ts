@@ -132,14 +132,20 @@ describe('Content Creation workflow', () => {
   });
 
   it('retrieves project-scoped knowledge and carries it into content research', async () => {
-    const knowledgeRetriever = vi.fn(async () => [{
-      sourceId: 'source-1',
-      sourceType: 'document',
-      title: 'Approved positioning',
-      url: 'https://example.com/positioning',
-      excerpt: 'Insight Loop gives growth teams reliable reporting without manual spreadsheet work.',
-      score: 0.91,
-    }]);
+    const knowledgeRetriever = vi.fn(async () => ({
+      status: 'success' as const,
+      retrievedAt: '2026-08-13T00:00:00.000Z',
+      sourceIds: ['source-1'],
+      sourceSnapshots: [],
+      citations: [{
+        sourceId: 'source-1',
+        sourceType: 'document',
+        title: 'Approved positioning',
+        url: 'https://example.com/positioning',
+        excerpt: 'Insight Loop gives growth teams reliable reporting without manual spreadsheet work.',
+        score: 0.91,
+      }],
+    }));
     const deps = buildDeps({ knowledgeRetriever });
     const workflow = buildContentCreationWorkflow(deps);
 
@@ -159,6 +165,12 @@ describe('Content Creation workflow', () => {
       .mock.calls[0]?.[0] as Array<{ content?: string }> | undefined;
     expect(researcherMessages?.[0]?.content).toContain('Approved positioning');
     expect(researcherMessages?.[0]?.content).toContain('manual spreadsheet work');
+    if (result.status === 'success') {
+      expect(result.result.knowledgeProvenance).toMatchObject({
+        status: 'success',
+        sourceIds: ['source-1'],
+      });
+    }
   });
 
   it('rewrites failed QA output once before scheduling', async () => {

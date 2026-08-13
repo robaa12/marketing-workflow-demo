@@ -8,6 +8,7 @@ import { STPResultSchema } from './stp.js';
 import { MarketingPlanQualitySchema } from './planQuality.js';
 import { TemporalContextSchema } from './temporal.js';
 import { KnowledgeScopeSchema } from './projectKnowledge.js';
+import { KnowledgeRetrievalProvenanceSchema } from './projectKnowledge.js';
 
 /**
  * Single source of truth for the marketing strategy workflow.
@@ -53,6 +54,7 @@ export type MarketingStrategyInput = z.infer<typeof MarketingStrategyInputSchema
  */
 export const MarketingStrategyOutputSchema = z.object({
   temporalContext: TemporalContextSchema.optional(),
+  knowledgeProvenance: KnowledgeRetrievalProvenanceSchema.optional(),
   product: ProductProfileSchema,
   stp: STPResultSchema,
   personas: z.array(BuyerPersonaSchema).min(1).max(3),

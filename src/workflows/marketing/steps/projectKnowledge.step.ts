@@ -1,8 +1,9 @@
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
-import type { ProjectKnowledgeRetriever } from '../../../lib/project-knowledge.js';
+import type { ProjectKnowledgeRetrievalRunner } from '../../../lib/project-knowledge.js';
 import {
   KnowledgeCitationSchema,
+  KnowledgeRetrievalProvenanceSchema,
   KnowledgeScopeSchema,
   ProductProfileSchema,
 } from '../../../schemas/index.js';
@@ -20,7 +21,7 @@ function strategyQuery(product: z.infer<typeof ProductProfileSchema>): string {
 }
 
 /** Retrieves only from the project-scoped source ids supplied by the backend. */
-export function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetriever) {
+export function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetrievalRunner) {
   return createStep({
     id: 'project-knowledge',
     description: 'Retrieves relevant approved project knowledge to ground strategy decisions.',
@@ -33,11 +34,19 @@ export function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetriever) {
       product: ProductProfileSchema,
       options: WORKFLOW_OPTIONS_SCHEMA,
       knowledge: z.array(KnowledgeCitationSchema),
+      knowledgeProvenance: KnowledgeRetrievalProvenanceSchema,
     }),
-    execute: async ({ inputData }) => ({
-      product: inputData.product,
-      options: inputData.options,
-      knowledge: await retrieve(inputData.knowledgeScope, strategyQuery(inputData.product)),
-    }),
+    execute: async ({ inputData }) => {
+      const knowledgeProvenance = await retrieve(
+        inputData.knowledgeScope,
+        strategyQuery(inputData.product),
+      );
+      return {
+        product: inputData.product,
+        options: inputData.options,
+        knowledge: knowledgeProvenance.citations,
+        knowledgeProvenance,
+      };
+    },
   });
 }

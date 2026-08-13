@@ -39,10 +39,14 @@ import { resolveBrandContext } from '../../tools/brand-context.tool.js';
 import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
 import { resolveTemporalContext } from '../../lib/temporal-context.js';
 import { TemporalContextSchema } from '../../schemas/temporal.js';
-import { KnowledgeCitationSchema, KnowledgeScopeSchema } from '../../schemas/projectKnowledge.js';
 import {
-  retrieveProjectKnowledge,
-  type ProjectKnowledgeRetriever,
+  KnowledgeCitationSchema,
+  KnowledgeRetrievalProvenanceSchema,
+  KnowledgeScopeSchema,
+} from '../../schemas/projectKnowledge.js';
+import {
+  retrieveProjectKnowledgeWithStatus,
+  type ProjectKnowledgeRetrievalRunner,
 } from '../../lib/project-knowledge.js';
 
 // ── Channel → Platform mapping ────────────────────────────────────────────
@@ -167,7 +171,7 @@ export interface ContentWorkflowDeps {
   visualPromptAgent: Agent;
   hashtagSeoAgent: Agent;
   editorQaAgent: Agent;
-  knowledgeRetriever?: ProjectKnowledgeRetriever;
+  knowledgeRetriever?: ProjectKnowledgeRetrievalRunner;
 }
 
 // ── Step 1: Build content brief from strategy ─────────────────────────────
@@ -231,7 +235,7 @@ function contentQuery(brief: ContentBrief): string {
   ].join('\n');
 }
 
-function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetriever) {
+function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetrievalRunner) {
   return createStep({
     id: 'project-knowledge',
     description: 'Retrieves relevant approved project knowledge to ground content generation.',
@@ -242,11 +246,19 @@ function buildProjectKnowledgeStep(retrieve: ProjectKnowledgeRetriever) {
     outputSchema: z.object({
       brief: ContentBriefSchema,
       knowledge: z.array(KnowledgeCitationSchema),
+      knowledgeProvenance: KnowledgeRetrievalProvenanceSchema,
     }),
-    execute: async ({ inputData }) => ({
-      brief: inputData.brief,
-      knowledge: await retrieve(inputData.knowledgeScope, contentQuery(inputData.brief)),
-    }),
+    execute: async ({ inputData }) => {
+      const knowledgeProvenance = await retrieve(
+        inputData.knowledgeScope,
+        contentQuery(inputData.brief),
+      );
+      return {
+        brief: inputData.brief,
+        knowledge: knowledgeProvenance.citations,
+        knowledgeProvenance,
+      };
+    },
   });
 }
 
@@ -259,6 +271,7 @@ function buildResearchStep(researchAgent: Agent) {
   inputSchema: z.object({
     brief: ContentBriefSchema,
     knowledge: z.array(KnowledgeCitationSchema),
+    knowledgeProvenance: KnowledgeRetrievalProvenanceSchema,
   }),
   outputSchema: z.object({
     brief: ContentBriefSchema,
@@ -267,14 +280,17 @@ function buildResearchStep(researchAgent: Agent) {
   retries: 0,
   stateSchema: ContentWorkflowStateSchema,
   execute: async ({ inputData, state, setState, tracingContext }) => {
-    const { brief, knowledge } = inputData;
+    const { brief, knowledge, knowledgeProvenance } = inputData;
     const research = await runContentResearch(
       researchAgent,
       { brief, knowledge },
       tracingContext,
     );
     await setState({ ...state, sourceCount: research.sources.length });
-    return { brief, research };
+    return {
+      brief,
+      research: { ...research, knowledgeProvenance },
+    };
   },
   });
 }
@@ -582,6 +598,7 @@ const scheduleStep = createStep({
 
     return {
       temporalContext: brief.temporalContext,
+      knowledgeProvenance: researchResult.research.knowledgeProvenance,
       strategy,
       calendar,
       notes: qaNotes,
@@ -649,7 +666,7 @@ const approvalStep = createStep({
 export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
   const researchStep = buildResearchStep(deps.contentResearcherAgent);
   const knowledgeStep = buildProjectKnowledgeStep(
-    deps.knowledgeRetriever ?? retrieveProjectKnowledge,
+    deps.knowledgeRetriever ?? retrieveProjectKnowledgeWithStatus,
   );
   const strategyStep = buildStrategyStep(deps.contentStrategyAgent);
   const generateContentStep = buildGenerateContentStep(

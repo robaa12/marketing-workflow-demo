@@ -59,14 +59,20 @@ describe('Marketing Director workflow (integration)', () => {
       buildMockAgent(sampleObjectives).generate;
     (campaignAgent.generate as unknown as ReturnType<typeof buildMockAgent>['generate']) =
       buildMockAgent(sampleStrategy).generate;
-    const knowledgeRetriever = vi.fn(async () => [{
-      sourceId: 'source-1',
-      sourceType: 'document',
-      title: 'Approved positioning',
-      url: 'https://example.com/positioning',
-      excerpt: 'Insight Loop is positioned as reliable reporting for growth teams.',
-      score: 0.91,
-    }]);
+    const knowledgeRetriever = vi.fn(async () => ({
+      status: 'success' as const,
+      retrievedAt: '2026-08-13T00:00:00.000Z',
+      sourceIds: ['source-1'],
+      sourceSnapshots: [],
+      citations: [{
+        sourceId: 'source-1',
+        sourceType: 'document',
+        title: 'Approved positioning',
+        url: 'https://example.com/positioning',
+        excerpt: 'Insight Loop is positioned as reliable reporting for growth teams.',
+        score: 0.91,
+      }],
+    }));
 
     const workflow = buildMarketingStrategyWorkflow({
       productAnalysisAgent: productAgent,
@@ -111,6 +117,10 @@ describe('Marketing Director workflow (integration)', () => {
       | Array<{ content?: string }>
       | undefined;
     expect(stpMessages?.[0]?.content).toContain('Approved positioning');
+    expect(result.result.knowledgeProvenance).toMatchObject({
+      status: 'success',
+      sourceIds: ['source-1'],
+    });
 
     const suspendedRun = await workflow.createRun();
     const suspended = await suspendedRun.start({

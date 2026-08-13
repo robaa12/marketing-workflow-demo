@@ -1,13 +1,17 @@
 import { createHash } from 'node:crypto';
 import { PgVector } from '@mastra/pg';
-import type { KnowledgeCitation, KnowledgeScope } from '../schemas/projectKnowledge.js';
+import type {
+  KnowledgeCitation,
+  KnowledgeRetrievalProvenance,
+  KnowledgeScope,
+} from '../schemas/projectKnowledge.js';
 
 export type { KnowledgeCitation, KnowledgeScope } from '../schemas/projectKnowledge.js';
 
-export type ProjectKnowledgeRetriever = (
+export type ProjectKnowledgeRetrievalRunner = (
   scope: KnowledgeScope | undefined,
   query: string,
-) => Promise<KnowledgeCitation[]>;
+) => Promise<KnowledgeRetrievalProvenance>;
 
 export interface IndexSourceInput {
   projectId: string;
@@ -435,16 +439,28 @@ export async function retrieveProjectKnowledge(
   scope: KnowledgeScope | undefined,
   query: string,
 ): Promise<KnowledgeCitation[]> {
-  if (
-    !scope?.sourceIds.length ||
-    process.env['RAG_ENABLED'] !== 'true'
-  ) {
-    return [];
+  return (await retrieveProjectKnowledgeWithStatus(scope, query)).citations;
+}
+
+export async function retrieveProjectKnowledgeWithStatus(
+  scope: KnowledgeScope | undefined,
+  query: string,
+): Promise<KnowledgeRetrievalProvenance> {
+  const provenance = {
+    retrievedAt: new Date().toISOString(),
+    sourceIds: scope?.sourceIds ?? [],
+    sourceSnapshots: scope?.sourceSnapshots ?? [],
+  };
+  if (process.env['RAG_ENABLED'] !== 'true') {
+    return { ...provenance, status: 'disabled', citations: [] };
+  }
+  if (!scope?.sourceIds.length) {
+    return { ...provenance, status: 'no-sources', citations: [] };
   }
   try {
     await ensureIndex();
     const [queryVector] = await embed([{ text: query }], 'query');
-    if (!queryVector) return [];
+    if (!queryVector) return { ...provenance, status: 'no-match', citations: [] };
     const search = (minScore: number) =>
       getVector().query({
         indexName: PROJECT_KNOWLEDGE_INDEX,
@@ -482,12 +498,22 @@ export async function retrieveProjectKnowledge(
         score: result.score,
       } satisfies KnowledgeCitation;
     });
-    return diversifyAndRerank(candidates, query);
+    const citations = diversifyAndRerank(candidates, query);
+    return {
+      ...provenance,
+      status: citations.length ? 'success' : 'no-match',
+      citations,
+    };
   } catch (error) {
     console.warn(
       `[project-knowledge] retrieval unavailable: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return [];
+    return {
+      ...provenance,
+      status: 'unavailable',
+      citations: [],
+      warning: 'Project knowledge retrieval was unavailable; generation continued without it.',
+    };
   }
 }
 

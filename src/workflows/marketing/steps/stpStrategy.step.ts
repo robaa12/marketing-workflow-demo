@@ -5,6 +5,7 @@ import { runSTPStrategy } from '../../../agents/stp/agent.js';
 import {
   ProductProfileSchema,
   KnowledgeCitationSchema,
+  KnowledgeRetrievalProvenanceSchema,
   STPResultSchema,
   STPResearchSchema,
 } from '../../../schemas/index.js';
@@ -25,6 +26,7 @@ export function buildSTPStrategyStep(agent: Agent) {
       product: ProductProfileSchema,
       stpResearch: STPResearchSchema,
       knowledge: z.array(KnowledgeCitationSchema),
+      knowledgeProvenance: KnowledgeRetrievalProvenanceSchema,
       options: WORKFLOW_OPTIONS_SCHEMA,
     }),
     outputSchema: z.object({

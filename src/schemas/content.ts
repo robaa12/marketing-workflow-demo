@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MarketingChannelEnum } from './common.js';
 import { IsoCalendarDateSchema, TemporalContextSchema } from './temporal.js';
 import { KnowledgeCitationSchema } from './projectKnowledge.js';
+import { KnowledgeRetrievalProvenanceSchema } from './projectKnowledge.js';
 
 // ── Platform enum (social-specific, maps to MarketingChannelEnum) ──────────
 
@@ -71,6 +72,7 @@ export const ResearchOutputSchema = z.object({
   audienceInsights: z.string(),
   knowledge: z.array(KnowledgeCitationSchema).default([])
     .describe('Retrieved project knowledge excerpts available to downstream content agents.'),
+  knowledgeProvenance: KnowledgeRetrievalProvenanceSchema.optional(),
 });
 export type ResearchOutput = z.infer<typeof ResearchOutputSchema>;
 
@@ -184,6 +186,7 @@ export type CalendarEntry = z.infer<typeof CalendarEntrySchema>;
 
 export const CampaignContentDraftOutputSchema = z.object({
   temporalContext: TemporalContextSchema,
+  knowledgeProvenance: KnowledgeRetrievalProvenanceSchema.optional(),
   strategy: ContentStrategySchema,
   calendar: z.array(CalendarEntrySchema),
   notes: z.array(QANoteSchema),
