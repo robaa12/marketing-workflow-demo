@@ -21,6 +21,12 @@ import { buildSmartObjectivesAgent } from '../agents/smart-objectives/index.js';
 import { buildCampaignPlannerAgent } from '../agents/campaign-planner/index.js';
 import { buildImageGenerationAgent } from '../agents/image-generation/index.js';
 import {
+  ChatTitleInputSchema,
+  buildChatTitleAgent,
+  fallbackChatTitle,
+  runChatTitle,
+} from '../agents/chat-title/index.js';
+import {
   buildContentResearcherAgent,
   buildContentStrategyAgent,
   buildCopywriterAgent,
@@ -147,6 +153,7 @@ const buyerJourneyAgent = buildBuyerJourneyAgent(model);
 const smartObjectivesAgent = buildSmartObjectivesAgent(model);
 const campaignPlannerAgent = buildCampaignPlannerAgent(model);
 const imageGenerationAgent = buildImageGenerationAgent(model);
+const chatTitleAgent = buildChatTitleAgent(model);
 
 /**
  * Content creation agents.
@@ -300,6 +307,34 @@ const knowledgeQueryRoute = registerApiRoute('/internal/knowledge/query', {
   },
 });
 
+const chatTitleRoute = registerApiRoute('/internal/chat-title/generate', {
+  method: 'POST',
+  requiresAuth: false,
+  handler: async (context) => {
+    if (!validInternalToken(context.req.header('x-mastra-internal-token'))) {
+      return context.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const parsed = ChatTitleInputSchema.safeParse(await context.req.json());
+    if (!parsed.success) {
+      return context.json(
+        { error: 'Invalid campaign title brief', details: parsed.error.issues },
+        400,
+      );
+    }
+
+    try {
+      return context.json(await runChatTitle(chatTitleAgent, parsed.data));
+    } catch (error) {
+      console.warn(
+        '[chat-title] Agent generation failed; using deterministic fallback.',
+        error,
+      );
+      return context.json(fallbackChatTitle(parsed.data));
+    }
+  },
+});
+
 /**
  * Singleton Mastra instance.
  *
@@ -336,6 +371,7 @@ export const mastra = new Mastra({
     visualPromptAgent,
     hashtagSeoAgent,
     editorQaAgent,
+    chatTitleAgent,
   },
   workflows: {
     marketingStrategyWorkflow,
@@ -351,6 +387,7 @@ export const mastra = new Mastra({
       knowledgeIndexRoute,
       knowledgeDeleteRoute,
       knowledgeQueryRoute,
+      chatTitleRoute,
       workflowRoute({
         path: '/workflow/stream',
         workflow: 'marketingStrategyWorkflow',
