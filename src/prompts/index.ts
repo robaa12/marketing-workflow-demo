@@ -10,3 +10,4 @@ export { HASHTAG_SEO_PROMPT } from './hashtagSeo.js';
 export { EDITOR_QA_PROMPT } from './editorQa.js';
 export { CONTENT_RESEARCH_PROMPT } from './contentResearch.js';
 export { CONTENT_STRATEGY_PROMPT } from './contentStrategy.js';
+export { CHAT_TITLE_PROMPT } from './chatTitle.js';

@@ -4,3 +4,4 @@ export * as buyerPersona from './buyer-persona/index.js';
 export * as buyerJourney from './buyer-journey/index.js';
 export * as smartObjectives from './smart-objectives/index.js';
 export * as campaignPlanner from './campaign-planner/index.js';
+export * as chatTitle from './chat-title/index.js';
