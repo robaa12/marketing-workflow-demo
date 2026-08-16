@@ -93,6 +93,24 @@ function buildDeps(overrides: Partial<ContentWorkflowDeps> = {}): ContentWorkflo
     editorQaAgent: mockAgent({
       object: { passed: true, posts: [initialPost], notes: [], feedback: [] },
     }),
+    imageGenerator: vi.fn(async (imageInput) => ({
+      url: 'data:image/png;base64,ZmFrZS1pbWFnZQ==',
+      seed: imageInput.seed ?? 42,
+      prompt: imageInput.prompt,
+      enhancedPrompt: `Gemini image: ${imageInput.prompt}`,
+      style: imageInput.style ?? 'cinematic',
+      aspectRatio: imageInput.aspectRatio ?? '16:9',
+      quality: imageInput.quality ?? 'standard',
+      provider: 'vercel-ai-gateway' as const,
+      model: 'gemini-test-image',
+      mimeType: 'image/png',
+      specs: {
+        composition: 'Centered subject',
+        colorPalette: ['brand purple'],
+        lighting: 'Studio light',
+        mood: 'Confident',
+      },
+    })),
     ...overrides,
   };
 }
@@ -127,8 +145,49 @@ describe('Content Creation workflow', () => {
       platform: 'linkedin',
       caption: initialPost.caption,
       hashtags: expect.arrayContaining(['#MarketingOps']),
-      imageUrl: expect.stringMatching(/^simulated:\/\/image-generation\//),
+      imageUrl: 'data:image/png;base64,ZmFrZS1pbWFnZQ==',
     });
+  });
+
+  it('skips Gemini calls when image generation is disabled', async () => {
+    const deps = buildDeps();
+    const workflow = buildContentCreationWorkflow(deps);
+    const result = await (await workflow.createRun()).start({
+      inputData: { ...input, generateImages: false },
+    });
+
+    expect(result.status).toBe('success');
+    expect(deps.imageGenerator).not.toHaveBeenCalled();
+    if (result.status === 'success') {
+      expect(result.result.calendar[0]?.imageUrl).toBeUndefined();
+      expect(result.result.calendar[0]?.visualPrompt).toContain(initialPost.caption);
+    }
+  });
+
+  it('keeps posts when image generation fails', async () => {
+    const deps = buildDeps({
+      imageGenerator: vi.fn(async () => {
+        throw new Error('Image provider unavailable');
+      }),
+    });
+    const workflow = buildContentCreationWorkflow(deps);
+
+    const result = await (await workflow.createRun()).start({ inputData: input });
+
+    expect(result.status).toBe('success');
+    expect(deps.imageGenerator).toHaveBeenCalledTimes(1);
+    if (result.status !== 'success') return;
+    expect(result.result.calendar).toHaveLength(1);
+    expect(result.result.calendar[0]).toMatchObject({
+      caption: initialPost.caption,
+      imageError: expect.stringContaining('post copy is ready'),
+    });
+    expect(result.result.calendar[0]?.imageUrl).toBeUndefined();
+    expect(result.result.notes).toContainEqual(expect.objectContaining({
+      postId: initialPost.postId,
+      severity: 'warning',
+      resolved: false,
+    }));
   });
 
   it('retrieves project-scoped knowledge and carries it into content research', async () => {
@@ -430,15 +489,18 @@ describe('Content Creation workflow', () => {
     expect(vi.mocked(copywriterAgent.generate)).toHaveBeenCalledTimes(2);
   });
 
-  it('fails instead of publishing a calendar with unmatched generated artifacts', async () => {
-    const workflow = buildContentCreationWorkflow(buildDeps({
-      visualPromptAgent: mockAgent({
+  it('keeps visual artifacts matched without trusting another model response', async () => {
+    const visualPromptAgent = mockAgent({
         object: [{ postId: 'linkedin-missing', prompt: 'Unmatched prompt', tool: 'dall-e', aspectRatio: '1:1' }],
-      }),
-    }));
+      });
+    const workflow = buildContentCreationWorkflow(buildDeps({ visualPromptAgent }));
 
     const result = await (await workflow.createRun()).start({ inputData: input });
 
-    expect(result.status).toBe('failed');
+    expect(result.status).toBe('success');
+    expect(visualPromptAgent.generate).not.toHaveBeenCalled();
+    if (result.status === 'success') {
+      expect(result.result.calendar[0]?.visualPrompt).toContain('for linkedin-1 unique');
+    }
   });
 });

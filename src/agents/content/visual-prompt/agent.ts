@@ -2,7 +2,6 @@ import { Agent } from '@mastra/core/agent';
 import type { TracingContext } from '@mastra/core/observability';
 import type { z } from 'zod';
 import { getModel } from '../../../lib/model.js';
-import { safeGenerate } from '../../../lib/safeGenerate.js';
 import { getPlatformRules } from '../../../lib/platform-rules.js';
 import {
   VisualPromptItemSchema,
@@ -36,66 +35,112 @@ export interface VisualPromptInput {
   posts: Post[];
 }
 
-const MAX_VISUALS_PER_GENERATION = 12;
+const MAX_IMAGE_PROMPT_CHARS = 1_000;
 
 /**
- * Run the visual prompt agent against a set of posts.
- * Includes research context (trends, content hooks) for more relevant visuals.
- * Returns an empty array if no posts are provided.
+ * Build Gemini-ready prompts directly from the approved content bundle.
+ *
+ * This used to ask a second language model to rewrite posts in batches of 12.
+ * A slow provider call could consume the full agent deadline and fail an
+ * otherwise complete content run before Gemini was ever reached. The renderer
+ * already understands rich natural-language instructions, so this bounded,
+ * deterministic transform is both more reliable and easier to audit.
  */
 export async function runVisualPrompts(
-  agent: Agent,
+  _agent: Agent,
   input: VisualPromptInput,
-  tracingContext?: TracingContext,
+  _tracingContext?: TracingContext,
 ): Promise<VisualPromptResult> {
   const { brief, strategy, research, posts } = input;
   if (posts.length === 0) return [];
 
-  // Get content hooks for visual storytelling
-  const hooksText = research.contentHooks
-    .map((h) => `- ${h.platform}: ${h.angle}`)
-    .join('\n');
-
-  const batches = Array.from(
-    { length: Math.ceil(posts.length / MAX_VISUALS_PER_GENERATION) },
-    (_, index) => posts.slice(
-      index * MAX_VISUALS_PER_GENERATION,
-      (index + 1) * MAX_VISUALS_PER_GENERATION,
-    ),
-  );
-
-  const results: VisualPromptResult[] = [];
-  for (const batchPosts of batches) {
-    const prompt = `Generate one visual/video AI prompt per post below. Stay visually consistent across the whole set — this is one campaign, one feed.
-
-== BRAND ==
-${brief.brandName} — voice: ${brief.brandVoice}
-Product: ${brief.product}
-Core narrative: ${strategy.coreNarrative}
-
-== TRENDS TO INCORPORATE (use for visual relevance) ==
-${research.trends.map((t) => `- ${t.title}: ${t.summary}`).join('\n')}
-
-== CONTENT HOOKS (weave these into visual storytelling) ==
-${hooksText || 'No specific hooks — use trends and brand voice.'}
-
-== AUDIENCE INSIGHTS (visual preferences) ==
-${research.audienceInsights}
-
-== POSTS ==
-${batchPosts.map((p) => `- [${p.postId}] ${p.platform} / format=${p.format}\n  caption: ${p.caption}\n  cta: ${p.cta}`).join('\n')}
-
-Return an array matching the schema, one item per post. Use the trends and hooks above to make visuals more relevant and engaging. Keep visual world consistent across posts. Use the most appropriate per-platform aspect ratio:
-${JSON.stringify(batchPosts.map((p) => ({ postId: p.postId, aspect: getPlatformRules(p.platform as SocialPlatform).format })))}`;
-
-    results.push(await safeGenerate(
-      agent,
-      [{ role: 'user', content: prompt }],
-      VisualPromptItemSchema.array(),
-      `visual-prompt:${batchPosts[0]?.postId}-${batchPosts.at(-1)?.postId}`,
-      { textFirst: true, tracingContext },
-    ));
+  const trends = research.trends
+    .slice(0, 2)
+    .map((trend) => trend.title)
+    .join(', ');
+  const hooksByPlatform = new Map<SocialPlatform, string[]>();
+  for (const hook of research.contentHooks) {
+    const hooks = hooksByPlatform.get(hook.platform) ?? [];
+    hooks.push(hook.angle);
+    hooksByPlatform.set(hook.platform, hooks);
   }
 
-  return results.flat();
+  return posts.map((post) => {
+    const platformRules = getPlatformRules(post.platform);
+    const platformHooks = hooksByPlatform.get(post.platform)?.slice(0, 2);
+    const aspectRatio = visualAspectRatio(post.platform, post.format);
+    const closingInstructions =
+      `Compose for ${aspectRatio}; keep the subject in the center safe area and leave intentional negative space. ` +
+      'Do not render logos, watermarks, UI chrome, hashtags, captions, or unreadable text.';
+    const prompt = boundedPrompt([
+      `Create a polished ${platformRules.label} visual for ${compactText(brief.brandName, 50)}.`,
+      `Message: ${compactText(post.caption, 180)}.`,
+      `Product: ${compactText(brief.product, 70)}. Audience: ${compactText(brief.targetAudience, 70)}.`,
+      `Campaign: ${compactText(strategy.coreNarrative, 70)}. Voice: ${compactText(brief.brandVoice, 50)}.`,
+      `Use one coherent campaign palette, lighting treatment, and recurring motif; make the composition for ${compactText(post.postId, 50)} unique.`,
+      `Format: ${compactText(`${post.format}; ${platformRules.format}`, 90)}.`,
+      platformHooks?.length
+        ? `Angle: ${compactText(platformHooks.join('; '), 70)}.`
+        : undefined,
+      trends ? `Context: ${compactText(trends, 50)}.` : undefined,
+      research.audienceInsights
+        ? `Preference: ${compactText(research.audienceInsights, 60)}.`
+        : undefined,
+      `CTA mood: ${compactText(post.cta, 40)}.`,
+    ], closingInstructions);
+
+    return VisualPromptItemSchema.parse({
+      postId: post.postId,
+      prompt,
+      tool: 'gemini',
+      aspectRatio,
+    });
+  });
+}
+
+function boundedPrompt(
+  rawParts: Array<string | undefined>,
+  closingInstructions: string,
+): string {
+  const closing = compactText(closingInstructions, MAX_IMAGE_PROMPT_CHARS);
+  const parts: string[] = [];
+  let remaining = MAX_IMAGE_PROMPT_CHARS - closing.length - 1;
+
+  for (const rawPart of rawParts) {
+    if (!rawPart || remaining <= 1) continue;
+    const part = compactText(rawPart, remaining);
+    if (!part) continue;
+    parts.push(part);
+    remaining -= part.length + 1;
+  }
+
+  return `${parts.join(' ')} ${closing}`.trim();
+}
+
+function compactText(value: string, maximum: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maximum) return normalized;
+  if (maximum <= 1) return normalized.slice(0, maximum);
+
+  const clipped = normalized.slice(0, maximum - 1);
+  const lastSpace = clipped.lastIndexOf(' ');
+  const boundary = lastSpace >= Math.floor(maximum * 0.6)
+    ? lastSpace
+    : clipped.length;
+  return `${clipped.slice(0, boundary).trimEnd()}…`;
+}
+
+function visualAspectRatio(
+  platform: SocialPlatform,
+  format: string,
+): '1:1' | '16:9' | '9:16' {
+  if (
+    platform === 'tiktok' ||
+    platform === 'youtube_shorts' ||
+    /reel|short|vertical|story|video/i.test(format)
+  ) {
+    return '9:16';
+  }
+  if (platform === 'instagram') return '1:1';
+  return '16:9';
 }

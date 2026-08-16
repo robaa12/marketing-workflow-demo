@@ -118,6 +118,7 @@ export const VisualPromptItemSchema = z.object({
     .describe('suggested generator tool, e.g. midjourney | dall-e | sora | imagen | runway'),
   aspectRatio: z.string(),
   imageUrl: z.string().optional().describe('generated image data URI or URL'),
+  imageError: z.string().optional().describe('non-fatal image generation warning'),
 });
 export type VisualPromptItem = z.infer<typeof VisualPromptItemSchema>;
 
@@ -178,6 +179,7 @@ export const CalendarEntrySchema = z.object({
   hashtags: z.array(z.string()),
   visualPrompt: z.string(),
   imageUrl: z.string().optional(),
+  imageError: z.string().optional(),
   cta: z.string(),
 });
 export type CalendarEntry = z.infer<typeof CalendarEntrySchema>;
