@@ -6,8 +6,8 @@ export function buildImageGenerationAgent(model: string = getModel()): Agent {
   return new Agent({
     id: 'image-generation-agent',
     name: 'Image Generation Agent',
-    description: 'Turns campaign visual concepts into platform-ready image specifications.',
-    instructions: 'Use imageGenerationTool to enhance a visual concept and create a platform-ready image specification. Preserve the brand and requested aspect ratio. Clearly state that the current provider is a demo provider when returning a simulated URL.',
+    description: 'Turns campaign visual concepts into platform-ready images through Vercel AI Gateway.',
+    instructions: 'Use imageGenerationTool to generate a platform-ready image. Preserve the brand, requested style, and aspect ratio. Return the generated image result accurately and never claim that an image was created when the tool failed.',
     model,
     tools: { imageGenerationTool },
   });

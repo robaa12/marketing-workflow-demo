@@ -7,7 +7,7 @@ import {
 
 export const imageGenerationTool = createTool({
   id: 'image-generation',
-  description: 'Creates an enhanced visual prompt and image specification. The configured demo provider returns a simulated image URL.',
+  description: 'Generates a real image through Vercel AI Gateway and returns a browser-ready image data URI plus its visual specification.',
   inputSchema: ImageGenerationInputSchema,
   outputSchema: ImageGenerationResultSchema,
   execute: generateImageAsset,

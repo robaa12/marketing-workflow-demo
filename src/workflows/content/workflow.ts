@@ -36,7 +36,12 @@ import {
 } from '../../lib/content-preflight.js';
 import { auditCampaignClaimsForBrand } from '../../lib/claim-audit.js';
 import { resolveBrandContext } from '../../tools/brand-context.tool.js';
-import { generateImageAsset, resolveImageAspectRatio } from '../../lib/image-generation.js';
+import {
+  generateImageAsset,
+  resolveImageAspectRatio,
+  type ImageGenerationInput,
+  type ImageGenerationResult,
+} from '../../lib/image-generation.js';
 import { resolveTemporalContext } from '../../lib/temporal-context.js';
 import { TemporalContextSchema } from '../../schemas/temporal.js';
 import {
@@ -139,6 +144,8 @@ const ContentCreationInputSchema = z.object({
     .describe('Safety limit for the total generated posts in one run.'),
   requireApproval: z.boolean().optional()
     .describe('Suspend after QA until a reviewer explicitly approves the content.'),
+  generateImages: z.boolean().optional()
+    .describe('Generate a Gemini image for each visual prompt. Disable to produce prompts only.'),
 });
 type ContentCreationInput = z.infer<typeof ContentCreationInputSchema>;
 
@@ -172,6 +179,9 @@ export interface ContentWorkflowDeps {
   hashtagSeoAgent: Agent;
   editorQaAgent: Agent;
   knowledgeRetriever?: ProjectKnowledgeRetrievalRunner;
+  imageGenerator?: (
+    input: ImageGenerationInput,
+  ) => Promise<ImageGenerationResult>;
 }
 
 // ── Step 1: Build content brief from strategy ─────────────────────────────
@@ -393,42 +403,76 @@ const preflightStep = createStep({
 
 // ── Step 5: Generate visual prompts ───────────────────────────────────────
 
-function buildGenerateVisualsStep(visualAgent: Agent) {
+function buildGenerateVisualsStep(
+  visualAgent: Agent,
+  imageGenerator: (
+    input: ImageGenerationInput,
+  ) => Promise<ImageGenerationResult>,
+) {
   return createStep({
-  id: 'generate-visuals',
-  description: 'Visual Prompt Agent — image/video prompts per generated post.',
-  inputSchema: ContentBundleSchema,
-  outputSchema: ContentBundleSchema,
-  retries: 0,
-  execute: async ({ inputData, getStepResult, tracingContext }) => {
-    const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
-    const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
-    const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
-    if (!briefResult?.brief) throw new Error('brief missing');
-    if (!strategyResult?.strategy) throw new Error('strategy missing');
-    if (!researchResult?.research) throw new Error('research missing');
+    id: 'generate-visuals',
+    description: 'Builds bounded Gemini-ready visual prompts per generated post.',
+    inputSchema: ContentBundleSchema,
+    outputSchema: ContentBundleSchema,
+    retries: 0,
+    execute: async ({ inputData, getStepResult, getInitData, tracingContext }) => {
+      const briefResult = getStepResult<{ brief: ContentBrief }>('build-brief');
+      const strategyResult = getStepResult<{ strategy: ContentStrategy }>('content-strategy');
+      const researchResult = getStepResult<{ research: ResearchOutput }>('content-research');
+      if (!briefResult?.brief) throw new Error('brief missing');
+      if (!strategyResult?.strategy) throw new Error('strategy missing');
+      if (!researchResult?.research) throw new Error('research missing');
 
-    const visualPrompts = await runVisualPrompts(visualAgent, {
-      brief: briefResult.brief,
-      strategy: strategyResult.strategy,
-      research: researchResult.research,
-      posts: inputData.posts,
-    }, tracingContext);
-    const visuals = await Promise.all(visualPrompts.map(async (visual) => {
-      const image = await generateImageAsset({
-        prompt: visual.prompt,
-        aspectRatio: resolveImageAspectRatio(visual.aspectRatio),
-      });
+      const visualPrompts = await runVisualPrompts(visualAgent, {
+        brief: briefResult.brief,
+        strategy: strategyResult.strategy,
+        research: researchResult.research,
+        posts: inputData.posts,
+      }, tracingContext);
+      const initialInput = getInitData<ContentCreationInput>();
+      if (initialInput.generateImages === false) {
+        return { ...inputData, visuals: visualPrompts };
+      }
+
+      const concurrency = imageGenerationConcurrency();
+      const visuals = await mapWithConcurrency(
+        visualPrompts,
+        concurrency,
+        async (visual) => {
+          try {
+            const image = await imageGenerator({
+              prompt: visual.prompt,
+              aspectRatio: resolveImageAspectRatio(visual.aspectRatio),
+            });
+            return {
+              ...visual,
+              prompt: image.enhancedPrompt,
+              tool: 'image-generation-agent',
+              aspectRatio: image.aspectRatio,
+              imageUrl: image.url,
+            };
+          } catch {
+            return {
+              ...visual,
+              imageError: 'Image generation was unavailable. The post copy is ready to use without an image.',
+            };
+          }
+        },
+      );
+      const imageWarnings = visuals
+        .filter((visual) => visual.imageError)
+        .map((visual) => ({
+          postId: visual.postId,
+          severity: 'warning' as const,
+          message: visual.imageError!,
+          resolved: false,
+        }));
       return {
-        ...visual,
-        prompt: image.enhancedPrompt,
-        tool: 'image-generation-agent',
-        aspectRatio: image.aspectRatio,
-        imageUrl: image.url,
+        ...inputData,
+        visuals,
+        qaNotes: [...inputData.qaNotes, ...imageWarnings],
       };
-    }));
-    return { ...inputData, visuals };
-  },
+    },
   });
 }
 
@@ -592,6 +636,7 @@ const scheduleStep = createStep({
         hashtags: hash.hashtags,
         visualPrompt: vis.prompt,
         imageUrl: vis.imageUrl,
+        imageError: vis.imageError,
         cta: post.cta,
       };
     });
@@ -678,7 +723,10 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
     deps.copywriterAgent,
     deps.copywriterStructurerAgent,
   );
-  const generateVisualsStep = buildGenerateVisualsStep(deps.visualPromptAgent);
+  const generateVisualsStep = buildGenerateVisualsStep(
+    deps.visualPromptAgent,
+    deps.imageGenerator ?? generateImageAsset,
+  );
   const generateHashtagsStep = buildGenerateHashtagsStep(deps.hashtagSeoAgent);
 
   return createWorkflow({
@@ -719,3 +767,36 @@ export function buildContentCreationWorkflow(deps: ContentWorkflowDeps) {
 }
 
 export type ContentCreationWorkflow = ReturnType<typeof buildContentCreationWorkflow>;
+
+function imageGenerationConcurrency(): number {
+  const raw =
+    process.env['VERCEL_IMAGE_CONCURRENCY'] ??
+    process.env['GEMINI_IMAGE_CONCURRENCY'];
+  if (!raw) return 2;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > 8) {
+    return 2;
+  }
+  return value;
+}
+
+async function mapWithConcurrency<T, TResult>(
+  items: T[],
+  concurrency: number,
+  task: (item: T) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results = new Array<TResult>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await task(items[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}

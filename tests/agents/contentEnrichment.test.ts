@@ -2,6 +2,7 @@ import type { Agent } from '@mastra/core/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { runHashtags } from '../../src/agents/content/hashtag-seo/agent.js';
 import { runVisualPrompts } from '../../src/agents/content/visual-prompt/agent.js';
+import { ImageGenerationInputSchema } from '../../src/lib/image-generation.js';
 import type {
   ContentBrief,
   ContentStrategy,
@@ -91,30 +92,64 @@ describe('Content enrichment', () => {
     }
   });
 
-  it('generates visual prompts text-first in batches of at most twelve', async () => {
+  it('builds Gemini-ready visual prompts without another model request', async () => {
     const posts = Array.from({ length: 13 }, (_, index) => makePost(index));
-    let offset = 0;
-    const generate = vi.fn(async (
-      _messages: unknown,
-      options?: Record<string, any>,
-    ) => {
-      expect(options?.structuredOutput).toBeUndefined();
-      const batch = posts.slice(offset, offset + 12);
-      offset += batch.length;
-      return {
-        object: batch.map((post) => ({
-          postId: post.postId,
-          prompt: `Campaign visual for ${post.postId}`,
-          tool: 'dall-e',
-          aspectRatio: '1:1',
-        })),
-      };
+    const generate = vi.fn(async () => {
+      throw new Error('the visual prompt model should not run');
     });
     const agent = { generate } as unknown as Agent;
 
     const result = await runVisualPrompts(agent, { brief, strategy, research, posts });
 
     expect(result).toHaveLength(13);
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).not.toHaveBeenCalled();
+    expect(result[0]).toMatchObject({
+      postId: 'linkedin-1',
+      tool: 'gemini',
+      aspectRatio: '16:9',
+    });
+    expect(result[0]?.prompt).toContain(brief.brandName);
+    expect(result[0]?.prompt).toContain(posts[0]?.caption);
+    expect(new Set(result.map((visual) => visual.prompt)).size).toBe(posts.length);
+  });
+
+  it('uses vertical Gemini images for short-form video platforms', async () => {
+    const agent = { generate: vi.fn() } as unknown as Agent;
+    const posts = [
+      makePost(0, 'youtube_shorts'),
+      makePost(1, 'tiktok'),
+    ];
+
+    const result = await runVisualPrompts(agent, { brief, strategy, research, posts });
+
+    expect(result.map((visual) => visual.aspectRatio)).toEqual(['9:16', '9:16']);
+  });
+
+  it('bounds long source content to the Gemini image prompt contract', async () => {
+    const agent = { generate: vi.fn() } as unknown as Agent;
+    const longPost = {
+      ...makePost(0),
+      caption: 'A detailed campaign message with supporting context. '.repeat(100),
+      cta: 'Book a tailored demonstration for your entire growth organization. '.repeat(20),
+    };
+
+    const [visual] = await runVisualPrompts(agent, {
+      brief: {
+        ...brief,
+        product: 'A comprehensive marketing intelligence and reporting platform. '.repeat(30),
+        targetAudience: 'Growth leaders at international SaaS organizations. '.repeat(30),
+      },
+      strategy,
+      research,
+      posts: [longPost],
+    });
+
+    expect(visual?.prompt.length).toBeLessThanOrEqual(1_000);
+    expect(visual?.prompt).toContain('Message: A detailed campaign message');
+    expect(visual?.prompt).toContain('Do not render logos, watermarks');
+    expect(() => ImageGenerationInputSchema.parse({
+      prompt: visual?.prompt,
+      aspectRatio: visual?.aspectRatio,
+    })).not.toThrow();
   });
 });

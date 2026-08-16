@@ -50,6 +50,29 @@ npm run dev -- "A SaaS that automates weekly marketing reporting" \
 
 The CLI serialises the final strategy as JSON to stdout.
 
+### Image generation through Vercel
+
+The content workflow can generate a real image for every social post. Add the
+Vercel AI Gateway key to `marketing-workflow-demo/.env` (server-side only):
+
+```env
+AI_GATEWAY_API_KEY=your-vercel-ai-gateway-key
+VERCEL_IMAGE_MODEL=bytedance/seedream-5.0-pro
+```
+
+`google/gemini-3.1-flash-image` is also supported. Dedicated image models such
+as Seedream automatically use the AI SDK image API, while Gemini image models
+use its multimodal API. Some models can be restricted by the Vercel team tier.
+A Google AI Studio key is not required for this path.
+
+Image jobs use a five-minute deadline by default. For unusually slow provider
+queues, set `VERCEL_IMAGE_TIMEOUT_MS` between `5000` and `600000`.
+
+Restart Mastra after changing `.env`. Leave **Generate visuals** enabled in the
+campaign form. The workflow exposes the returned image bytes as data URIs for
+the existing results UI. Turn the option off to keep generated visual prompts
+without making image requests.
+
 ### Using the workflow programmatically
 
 ```ts
